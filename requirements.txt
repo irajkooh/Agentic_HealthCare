@@ -1,6 +1,6 @@
 fastapi>=0.115.0
 uvicorn>=0.32.0
-gradio==6.0.0
+gradio==6.9.0
 langgraph>=0.2.50
 langchain-core>=0.3.20
 langchain-community>=0.3.5

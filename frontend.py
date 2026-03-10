@@ -1,7 +1,7 @@
 """
 Healthcare AI Frontend — Gradio UI
-Gradio 6 compatible. CSS injected via gr.Blocks so it works
-identically on local and HuggingFace Spaces.
+Compatible with Gradio 4, 5, and 6 / local and HF Spaces.
+CSS injected as a <style> tag in HTML — works everywhere.
 """
 
 import sys, os
@@ -117,12 +117,13 @@ WORKFLOW_HTML = """
 </div>
 """
 
-# ── CSS ───────────────────────────────────────────────────────────────────────
-# Injected via gr.Blocks(css=...) — applies identically on local AND HF Spaces.
-# Do NOT pass css to .launch() — HF Spaces ignores launch() kwargs.
+# ── CSS injected as HTML <style> tag — works on ALL Gradio versions ────────────
+# Never pass css= to gr.Blocks() or .launch() — different Gradio versions
+# handle this differently. Injecting via gr.HTML is the only universal approach.
 
-CSS = """
-/* ── Agent report boxes: fixed height, always scrollable ── */
+CSS_HTML = """
+<style>
+/* ── Report textboxes: fixed height, always scrollable ── */
 .report-box textarea,
 .report-box .scroll-hide {
     font-family: 'Courier New', 'Consolas', monospace !important;
@@ -146,17 +147,18 @@ CSS = """
 }
 
 /* Status bar */
-.status-bar > div {
-    font-size:     13px;
-    color:         #4b5563;
-    padding:       6px 10px;
-    background:    #f9fafb;
-    border:        1px solid #e5e7eb;
-    border-radius: 6px;
+.status-bar p, .status-bar {
+    font-size:     13px   !important;
+    color:         #4b5563 !important;
+    padding:       6px 10px !important;
+    background:    #f9fafb !important;
+    border:        1px solid #e5e7eb !important;
+    border-radius: 6px !important;
+    margin:        0 !important;
 }
 
-/* Hide Gradio footer */
 footer { display: none !important; }
+</style>
 """
 
 TITLE_HTML = """
@@ -248,13 +250,10 @@ def run_analysis(name, age, gender, symptoms, vitals, history, medications, alle
 # ── UI ─────────────────────────────────────────────────────────────────────────
 
 def build_ui() -> gr.Blocks:
-    # css here — works on BOTH local and HF Spaces
-    with gr.Blocks(
-        title="Healthcare AI",
-        css=CSS,
-        theme=gr.themes.Soft(primary_hue="blue", secondary_hue="slate"),
-    ) as demo:
+    with gr.Blocks(title="Healthcare AI") as demo:
 
+        # Inject CSS as HTML — works on all Gradio versions, local and HF
+        gr.HTML(CSS_HTML)
         gr.HTML(TITLE_HTML)
 
         # Status bar + buttons
@@ -337,39 +336,35 @@ def build_ui() -> gr.Blocks:
                     label="Click to load an example patient",
                 )
 
-            # Right — agent outputs (all same fixed height, all scrollable)
+            # Right — agent outputs (fixed height, all scrollable via CSS)
             with gr.Column(scale=2):
                 gr.Markdown("### 📄 Clinical Report")
 
                 with gr.Tab("🚨 Triage"):
                     triage_out = gr.Textbox(
                         label="Triage Agent",
-                        lines=20,
-                        max_lines=20,
+                        lines=20, max_lines=20,
                         interactive=False,
                         elem_classes=["report-box"],
                     )
                 with gr.Tab("🔬 Diagnosis"):
                     diagnosis_out = gr.Textbox(
                         label="Diagnosis Agent",
-                        lines=20,
-                        max_lines=20,
+                        lines=20, max_lines=20,
                         interactive=False,
                         elem_classes=["report-box"],
                     )
                 with gr.Tab("💊 Treatment"):
                     treatment_out = gr.Textbox(
                         label="Treatment Agent",
-                        lines=20,
-                        max_lines=20,
+                        lines=20, max_lines=20,
                         interactive=False,
                         elem_classes=["report-box"],
                     )
                 with gr.Tab("📋 Full Report"):
                     final_out = gr.Textbox(
                         label="Complete Clinical Report",
-                        lines=26,
-                        max_lines=26,
+                        lines=26, max_lines=26,
                         interactive=False,
                         elem_classes=["report-box", "full-report"],
                     )
@@ -384,7 +379,7 @@ def build_ui() -> gr.Blocks:
 
         gr.Markdown(
             "<div style='text-align:center;color:#9ca3af;font-size:11px;padding:6px'>"
-            "Healthcare AI | LangGraph + FastAPI + Gradio 6 | Not a replacement for clinical judgment"
+            "Healthcare AI | LangGraph + FastAPI + Gradio | Not a replacement for clinical judgment"
             "</div>"
         )
 

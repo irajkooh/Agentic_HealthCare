@@ -120,9 +120,11 @@ WORKFLOW_HTML = """
 
 CSS = """
 .report-box textarea {
-    font-family: 'Courier New', monospace !important;
-    font-size: 13px !important;
-    line-height: 1.6 !important;
+  font-family: 'Courier New', monospace !important;
+  font-size: 13px !important;
+  line-height: 1.6 !important;
+  max-height: 350px !important;
+  overflow-y: auto !important;
 }
 footer { display: none !important; }
 """

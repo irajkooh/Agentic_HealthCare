@@ -14,7 +14,7 @@ Detection strategy (three layers — any one is sufficient):
 
 Optional env vars (set as HF Space secrets or locally):
   OLLAMA_BASE_URL   override Ollama URL   (default: http://localhost:11434)
-  HF_MODEL          override HF model     (default: meta-llama/Llama-3.1-8B-Instruct)
+  HF_MODEL          override HF model     (default: meta-llama/Llama-3.2-3B-Instruct)
   HF_TOKEN          HF access token       (improves rate limits, not required)
 """
 
@@ -43,7 +43,7 @@ def is_hf_space() -> bool:
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL    = "llama3.2"
 
-HF_MODEL   = os.environ.get("HF_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
+HF_MODEL   = os.environ.get("HF_MODEL", "meta-llama/Llama-3.2-3B-Instruct")
 HF_TOKEN   = os.environ.get("HF_TOKEN", "")
 HF_API_URL = f"https://router.huggingface.co/v1/chat/completions"
 

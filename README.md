@@ -4,11 +4,11 @@ emoji: 🏥
 colorFrom: blue
 colorTo: indigo
 sdk: gradio
-sdk_version: 5.9.1
+sdk_version: 6.0.0
 app_file: app.py
 pinned: true
 license: mit
-short_description: Multi-Agent Clinical Decision Support: Triage to Treatment
+short_description: 'Multi-Agent Clinical Decision Support: Triage to Treatment'
 ---
 
 # 🏥 Healthcare AI Clinical Decision Support

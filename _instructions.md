@@ -270,7 +270,7 @@ git clone https://huggingface.co/spaces/irajkoohi/Agentic_HealthCare
 cd Agentic_HealthCare
 
 # Copy all project files into the cloned folder
-cp -r /path/to/hc/* .
+cp -r ../* .
 
 # Commit and push
 git add .
@@ -285,7 +285,7 @@ Build typically takes 3–5 minutes.
 
 Once the build completes your Space is live at:
 ```
-https://huggingface.co/spaces/YOUR_USERNAME/HealthCare
+https://huggingface.co/spaces/YOUR_USERNAME/Agentic_HealthCare
 ```
 
 The status bar in the UI will show:

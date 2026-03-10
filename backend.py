@@ -20,7 +20,7 @@ from typing import Optional
 import uvicorn
 
 from utils.device import get_device_info
-from utils.ollama_client import check_ollama_health
+from utils.llm_client import check_llm_health, is_hf_space
 from pipeline import run_pipeline
 
 
@@ -78,14 +78,14 @@ class AnalysisResponse(BaseModel):
 async def health_check():
     """Check system health, device, and Ollama status."""
     device_info = get_device_info()
-    ollama_status = check_ollama_health()
+    llm = check_llm_health()
 
     overall = "healthy" if ollama_status["running"] and ollama_status["model_ready"] else "degraded"
 
     return {
         "status": overall,
         "device_info": device_info,
-        "ollama": ollama_status,
+        "ollama": llm,
         "agents": ["supervisor", "triage", "diagnosis", "treatment", "report"]
     }
 
@@ -132,17 +132,6 @@ async def analyze_patient(request: PatientRequest):
     Returns triage, diagnosis, treatment outputs and compiled final report.
     """
     # Check Ollama before running
-    ollama = check_ollama_health()
-    if not ollama["running"]:
-        raise HTTPException(
-            status_code=503,
-            detail="Ollama is not running. Please start it with: ollama serve"
-        )
-    if not ollama["model_ready"]:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Model llama3.2 not available. Run: ollama pull llama3.2"
-        )
 
     patient_data = request.model_dump()
 

@@ -1,35 +1,18 @@
 """
 Unified LLM Client
 ==================
-Single source of truth for all LLM calls in the project.
+Local  -> Ollama @ localhost:11434 using llama3.2
+HF     -> HuggingFace InferenceClient using meta-llama/Llama-3.1-8B-Instruct
 
-Runtime routing (automatic):
-  Local (Ollama reachable)  ->  Ollama @ localhost:11434  using llama3.2
-  HF Spaces / no Ollama     ->  HuggingFace Inference API using Qwen2.5-72B-Instruct
-
-Detection strategy (three layers — any one is sufficient):
-  1. SPACE_ID env var is set         (HF sets this on every Space)
-  2. SYSTEM env var == "spaces"      (HF also sets this)
-  3. Ollama probe fails at call time  (automatic fallback — no config needed)
-
-Optional env vars (set as HF Space secrets or locally):
-  OLLAMA_BASE_URL   override Ollama URL   (default: http://localhost:11434)
-  HF_MODEL          override HF model     (default: meta-llama/Llama-3.2-3B-Instruct)
-  HF_TOKEN          HF access token       (improves rate limits, not required)
+HF_TOKEN must be set as a Space secret.
 """
 
 import os
 import time
 import requests
 
-# ── Environment detection ──────────────────────────────────────────────────────
-
 def is_hf_space() -> bool:
-    """
-    True when running on HuggingFace Spaces.
-    Checks all known HF env vars — any one is sufficient.
-    """
-    if os.environ.get("SPACE_ID"):        # always set on HF Spaces
+    if os.environ.get("SPACE_ID"):
         return True
     if os.environ.get("SYSTEM") == "spaces":
         return True
@@ -37,25 +20,17 @@ def is_hf_space() -> bool:
         return True
     return False
 
-
-# ── Config ─────────────────────────────────────────────────────────────────────
-
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL    = "llama3.2"
-
-HF_MODEL = os.environ.get("HF_MODEL", "meta-llama/Llama-3.2-3B-Instruct")
-HF_TOKEN   = os.environ.get("HF_TOKEN", "")
-HF_API_URL = "https://router.huggingface.co/v1/chat/completions"
-
-
-# ── Health check ───────────────────────────────────────────────────────────────
+HF_MODEL = os.environ.get("HF_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
+HF_TOKEN = os.environ.get("HF_TOKEN", "")
 
 def check_llm_health() -> dict:
     if is_hf_space():
         return {
             "running": True, "model_ready": True,
-            "backend": "huggingface", "model": HF_MODEL + ":hf-inference",
-            "note": "HuggingFace Inference API (serverless)",
+            "backend": "huggingface", "model": HF_MODEL,
+            "note": "HuggingFace Inference Providers",
         }
     try:
         resp = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=5)
@@ -75,9 +50,6 @@ def check_llm_health() -> dict:
         "error": "Ollama not reachable. Run: ollama serve && ollama pull llama3.2",
     }
 
-
-# ── Ollama backend ─────────────────────────────────────────────────────────────
-
 def _invoke_ollama(prompt: str, system: str, temperature: float, max_tokens: int) -> str:
     messages = []
     if system:
@@ -91,41 +63,22 @@ def _invoke_ollama(prompt: str, system: str, temperature: float, max_tokens: int
     resp.raise_for_status()
     return resp.json()["message"]["content"]
 
-
-# ── HuggingFace Inference API backend ─────────────────────────────────────────
-
 def _invoke_hf(prompt: str, system: str, temperature: float, max_tokens: int) -> str:
+    from huggingface_hub import InferenceClient
+    if not HF_TOKEN:
+        raise RuntimeError("HF_TOKEN not set. Add it as a Space secret.")
+    client = InferenceClient(provider="auto", api_key=HF_TOKEN)
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
-
-    headers = {"Content-Type": "application/json"}
-    if HF_TOKEN:
-        headers["Authorization"] = f"Bearer {HF_TOKEN}"
-
-    payload = {
-        "model": HF_MODEL + ":hf-inference", "messages": messages,
-        "max_tokens": max_tokens, "temperature": temperature, "stream": False,
-    }
-
-    resp = requests.post(HF_API_URL, headers=headers, json=payload, timeout=120)
-
-    # HF returns 503 while model warms up — retry once automatically
-    if resp.status_code == 503:
-        try:
-            wait = float(resp.json().get("estimated_time", 20))
-        except Exception:
-            wait = 20
-        print(f"   HF model warming up, retrying in {min(wait,30):.0f}s...")
-        time.sleep(min(wait, 30))
-        resp = requests.post(HF_API_URL, headers=headers, json=payload, timeout=120)
-
-    resp.raise_for_status()
-    return resp.json()["choices"][0]["message"]["content"]
-
-
-# ── Public interface ───────────────────────────────────────────────────────────
+    response = client.chat.completions.create(
+        model=HF_MODEL,
+        messages=messages,
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
+    return response.choices[0].message.content
 
 def invoke(
     prompt:      str,
@@ -134,23 +87,9 @@ def invoke(
     temperature: float = 0.3,
     max_tokens:  int   = 1024,
 ) -> str:
-    """
-    Call the LLM and return the response text.
-
-    Routing logic:
-      1. HF Spaces env vars detected   ->  HF Inference API  (direct)
-      2. Local, Ollama reachable        ->  Ollama
-      3. Local, Ollama NOT reachable    ->  HF Inference API  (automatic fallback)
-
-    Layer 3 ensures the app always works on any cloud deployment even if
-    env var detection is incomplete.
-    """
     if is_hf_space():
         return _invoke_hf(prompt, system, temperature, max_tokens)
-
-    # Local: try Ollama, fall back to HF API on connection failure
     try:
         return _invoke_ollama(prompt, system, temperature, max_tokens)
-    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
-        print(f"   Ollama unreachable ({type(e).__name__}), switching to HF Inference API...")
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
         return _invoke_hf(prompt, system, temperature, max_tokens)

@@ -2,16 +2,14 @@
 Unified LLM Client
 ==================
 Local  -> Ollama @ localhost:11434 using llama3.2
-HF     -> HuggingFace InferenceClient using meta-llama/Llama-3.2-3B-Instruct
+HF     -> HuggingFace InferenceClient using meta-llama/Llama-3.1-8B-Instruct
+         via "novita" provider (works with HF_TOKEN only, no extra API key)
 
-HF_TOKEN must be set as a Space secret (required by HF Inference Providers).
+HF_TOKEN must be set as a Space secret.
 """
 
 import os
-import time
 import requests
-
-# ── Environment detection ──────────────────────────────────────────────────────
 
 def is_hf_space() -> bool:
     if os.environ.get("SPACE_ID"):
@@ -22,24 +20,20 @@ def is_hf_space() -> bool:
         return True
     return False
 
-
-# ── Config ─────────────────────────────────────────────────────────────────────
-
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL    = "llama3.2"
 
-HF_MODEL = os.environ.get("HF_MODEL", "meta-llama/Llama-3.2-3B-Instruct")
-HF_TOKEN = os.environ.get("HF_TOKEN", "")
+HF_MODEL    = os.environ.get("HF_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
+HF_PROVIDER = os.environ.get("HF_PROVIDER", "novita")
+HF_TOKEN    = os.environ.get("HF_TOKEN", "")
 
-
-# ── Health check ───────────────────────────────────────────────────────────────
 
 def check_llm_health() -> dict:
     if is_hf_space():
         return {
             "running": True, "model_ready": True,
             "backend": "huggingface", "model": HF_MODEL,
-            "note": "HuggingFace Inference Providers",
+            "note": f"HuggingFace/{HF_PROVIDER}",
         }
     try:
         resp = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=5)
@@ -60,8 +54,6 @@ def check_llm_health() -> dict:
     }
 
 
-# ── Ollama backend ─────────────────────────────────────────────────────────────
-
 def _invoke_ollama(prompt: str, system: str, temperature: float, max_tokens: int) -> str:
     messages = []
     if system:
@@ -76,27 +68,15 @@ def _invoke_ollama(prompt: str, system: str, temperature: float, max_tokens: int
     return resp.json()["message"]["content"]
 
 
-# ── HuggingFace Inference Providers backend ────────────────────────────────────
-
 def _invoke_hf(prompt: str, system: str, temperature: float, max_tokens: int) -> str:
-    try:
-        from huggingface_hub import InferenceClient
-    except ImportError:
-        raise RuntimeError("huggingface_hub not installed. Add it to requirements.txt")
-
+    from huggingface_hub import InferenceClient
     if not HF_TOKEN:
         raise RuntimeError("HF_TOKEN not set. Add it as a Space secret.")
-
-    client = InferenceClient(
-        provider="together",
-        api_key=HF_TOKEN,
-    )
-
+    client = InferenceClient(provider=HF_PROVIDER, api_key=HF_TOKEN)
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
-
     response = client.chat.completions.create(
         model=HF_MODEL,
         messages=messages,
@@ -105,8 +85,6 @@ def _invoke_hf(prompt: str, system: str, temperature: float, max_tokens: int) ->
     )
     return response.choices[0].message.content
 
-
-# ── Public interface ───────────────────────────────────────────────────────────
 
 def invoke(
     prompt:      str,

@@ -45,7 +45,7 @@ OLLAMA_MODEL    = "llama3.2"
 
 HF_MODEL   = os.environ.get("HF_MODEL", "meta-llama/Llama-3.2-3B-Instruct")
 HF_TOKEN   = os.environ.get("HF_TOKEN", "")
-HF_API_URL = f"https://router.huggingface.co/v1/chat/completions"
+HF_API_URL = f"https://router.huggingface.co/hf-inference/models/{HF_MODEL}/v1/chat/completions"
 
 
 # ── Health check ───────────────────────────────────────────────────────────────

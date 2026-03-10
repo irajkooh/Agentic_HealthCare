@@ -1,6 +1,7 @@
 """
 Healthcare AI Frontend — Gradio UI
-Gradio 6 compatible.
+Compatible with all Gradio versions on local and HF Spaces.
+Report outputs use gr.HTML for consistent fixed-height scrollable display.
 """
 
 import sys, os
@@ -116,19 +117,6 @@ WORKFLOW_HTML = """
 </div>
 """
 
-# ── CSS ────────────────────────────────────────────────────────────────────────
-
-CSS = """
-.report-box textarea {
-  font-family: 'Courier New', monospace !important;
-  font-size: 13px !important;
-  line-height: 1.6 !important;
-  max-height: 350px !important;
-  overflow-y: auto !important;
-}
-footer { display: none !important; }
-"""
-
 TITLE_HTML = """
 <div style="text-align:center;padding:20px 0 6px 0;">
   <h1 style="font-size:1.9rem;font-weight:700;color:#1e3a5f;margin:0;">
@@ -144,6 +132,47 @@ TITLE_HTML = """
   </p>
 </div>
 """
+
+# ── Report box renderer ────────────────────────────────────────────────────────
+# Uses inline HTML — immune to Gradio version differences.
+# Height is set in pixels directly on the element.
+
+REPORT_BOX_STYLE = (
+    "width:100%;"
+    "height:480px;"
+    "min-height:480px;"
+    "max-height:480px;"
+    "overflow-y:auto;"
+    "overflow-x:hidden;"
+    "font-family:'Courier New','Consolas',monospace;"
+    "font-size:13px;"
+    "line-height:1.65;"
+    "white-space:pre-wrap;"
+    "word-break:break-word;"
+    "background:#f9fafb;"
+    "border:1px solid #e5e7eb;"
+    "border-radius:8px;"
+    "padding:14px 16px;"
+    "box-sizing:border-box;"
+    "color:#111827;"
+)
+
+FULL_REPORT_BOX_STYLE = REPORT_BOX_STYLE.replace("height:480px;", "height:600px;") \
+                                         .replace("min-height:480px;", "min-height:600px;") \
+                                         .replace("max-height:480px;", "max-height:600px;")
+
+EMPTY_MSG = "<span style='color:#9ca3af;font-style:italic;'>Output will appear here after analysis.</span>"
+
+
+def make_report_html(text: str, full: bool = False) -> str:
+    import html
+    style = FULL_REPORT_BOX_STYLE if full else REPORT_BOX_STYLE
+    if not text or not text.strip():
+        content = EMPTY_MSG
+    else:
+        content = html.escape(text)
+    return f'<div style="{style}">{content}</div>'
+
 
 # ── Backend helpers ────────────────────────────────────────────────────────────
 
@@ -169,7 +198,8 @@ def get_system_status() -> str:
 
 def run_analysis(name, age, gender, symptoms, vitals, history, medications, allergies):
     if not str(symptoms).strip():
-        return ("⚠️ Please enter the patient's symptoms.", "", "", "", "")
+        err = make_report_html("⚠️ Please enter the patient's symptoms.")
+        return ("⚠️ Please enter symptoms.", err, err, err, err)
 
     payload = {
         "name":        name        or "Anonymous",
@@ -186,15 +216,16 @@ def run_analysis(name, age, gender, symptoms, vitals, history, medications, alle
         resp = requests.post(f"{BACKEND_URL}/analyze", json=payload, timeout=300)
 
         if resp.status_code == 503:
-            detail = ""
             try:
                 detail = resp.json().get("detail", "")
             except Exception:
                 detail = resp.text
-            return (f"❌ Service unavailable: {detail}", "", "", "", "")
+            err = make_report_html(f"❌ Service unavailable: {detail}")
+            return (f"❌ Service unavailable: {detail}", err, err, err, err)
 
         if resp.status_code != 200:
-            return (f"❌ Error {resp.status_code}: {resp.text}", "", "", "", "")
+            err = make_report_html(f"❌ Error {resp.status_code}: {resp.text}")
+            return (f"❌ Error {resp.status_code}", err, err, err, err)
 
         data        = resp.json()
         agents_done = " → ".join(
@@ -202,18 +233,21 @@ def run_analysis(name, age, gender, symptoms, vitals, history, medications, alle
         )
         return (
             f"**Pipeline:** {agents_done}",
-            data.get("triage_output",    ""),
-            data.get("diagnosis_output", ""),
-            data.get("treatment_output", ""),
-            data.get("final_report",     ""),
+            make_report_html(data.get("triage_output",    ""), full=False),
+            make_report_html(data.get("diagnosis_output", ""), full=False),
+            make_report_html(data.get("treatment_output", ""), full=False),
+            make_report_html(data.get("final_report",     ""), full=True),
         )
 
     except requests.exceptions.ConnectionError:
-        return ("❌ Cannot connect to backend. Make sure app.py is running.", "", "", "", "")
+        err = make_report_html("❌ Cannot connect to backend. Make sure app.py is running.")
+        return ("❌ Cannot connect to backend.", err, err, err, err)
     except requests.exceptions.Timeout:
-        return ("❌ Request timed out (>300s). The model may be overloaded.", "", "", "", "")
+        err = make_report_html("❌ Request timed out (>300s). The model may be overloaded.")
+        return ("❌ Request timed out.", err, err, err, err)
     except Exception as e:
-        return (f"❌ Unexpected error: {e}", "", "", "", "")
+        err = make_report_html(f"❌ Unexpected error: {e}")
+        return (f"❌ Unexpected error: {e}", err, err, err, err)
 
 
 # ── UI ─────────────────────────────────────────────────────────────────────────
@@ -226,8 +260,8 @@ def build_ui() -> gr.Blocks:
         # Status bar + buttons
         with gr.Row():
             status_md    = gr.Markdown("*Checking backend status...*")
-            refresh_btn  = gr.Button("🔄 Refresh",       size="sm", scale=0)
-            workflow_btn = gr.Button("🔀 Show Workflow",  size="sm", scale=0)
+            refresh_btn  = gr.Button("🔄 Refresh",      size="sm", scale=0)
+            workflow_btn = gr.Button("🔀 Show Workflow", size="sm", scale=0)
 
         demo.load(fn=get_system_status, outputs=status_md)
         refresh_btn.click(fn=get_system_status, outputs=status_md)
@@ -262,17 +296,32 @@ def build_ui() -> gr.Blocks:
                         value="Unknown", scale=1,
                     )
 
-                symptoms_in  = gr.Textbox(label="🩺 Chief Complaint & Symptoms *",
-                                          placeholder="Describe all symptoms in detail...", lines=4)
-                vitals_in    = gr.Textbox(label="📊 Vital Signs",
-                                          placeholder="BP 120/80, HR 72, Temp 37C, SpO2 98%, RR 16", lines=2)
-                history_in   = gr.Textbox(label="📋 Medical History",
-                                          placeholder="Past diagnoses, surgeries, chronic conditions...", lines=2)
+                symptoms_in  = gr.Textbox(
+                    label="🩺 Chief Complaint & Symptoms *",
+                    placeholder="Describe all symptoms in detail...",
+                    lines=4,
+                )
+                vitals_in    = gr.Textbox(
+                    label="📊 Vital Signs",
+                    placeholder="BP 120/80, HR 72, Temp 37C, SpO2 98%, RR 16",
+                    lines=2,
+                )
+                history_in   = gr.Textbox(
+                    label="📋 Medical History",
+                    placeholder="Past diagnoses, surgeries, chronic conditions...",
+                    lines=2,
+                )
                 with gr.Row():
-                    meds_in      = gr.Textbox(label="💊 Current Medications",
-                                              placeholder="Drug, dose, frequency...", lines=2, scale=1)
-                    allergies_in = gr.Textbox(label="⚠️ Allergies",
-                                              placeholder="Drug/food allergies", lines=2, scale=1)
+                    meds_in      = gr.Textbox(
+                        label="💊 Current Medications",
+                        placeholder="Drug, dose, frequency...",
+                        lines=2, scale=1,
+                    )
+                    allergies_in = gr.Textbox(
+                        label="⚠️ Allergies",
+                        placeholder="Drug/food allergies",
+                        lines=2, scale=1,
+                    )
 
                 analyze_btn     = gr.Button("🔬 Run Clinical Analysis", variant="primary", size="lg")
                 pipeline_status = gr.Markdown("*Pipeline status will appear here.*")
@@ -285,22 +334,25 @@ def build_ui() -> gr.Blocks:
                     label="Click to load an example patient",
                 )
 
-            # Right — agent outputs
+            # Right — agent outputs as HTML divs (fixed height, always scrollable)
             with gr.Column(scale=2):
                 gr.Markdown("### 📄 Clinical Report")
 
                 with gr.Tab("🚨 Triage"):
-                    triage_out = gr.Textbox(label="Triage Agent", lines=18,
-                                            interactive=False, elem_classes=["report-box"])
+                    gr.Markdown("**Triage Agent**")
+                    triage_out = gr.HTML(value=make_report_html(""))
+
                 with gr.Tab("🔬 Diagnosis"):
-                    diagnosis_out = gr.Textbox(label="Diagnosis Agent", lines=18,
-                                               interactive=False, elem_classes=["report-box"])
+                    gr.Markdown("**Diagnosis Agent**")
+                    diagnosis_out = gr.HTML(value=make_report_html(""))
+
                 with gr.Tab("💊 Treatment"):
-                    treatment_out = gr.Textbox(label="Treatment Agent", lines=18,
-                                               interactive=False, elem_classes=["report-box"])
+                    gr.Markdown("**Treatment Agent**")
+                    treatment_out = gr.HTML(value=make_report_html(""))
+
                 with gr.Tab("📋 Full Report"):
-                    final_out = gr.Textbox(label="Complete Clinical Report", lines=24,
-                                           interactive=False, elem_classes=["report-box"])
+                    gr.Markdown("**Complete Clinical Report**")
+                    final_out = gr.HTML(value=make_report_html("", full=True))
 
         analyze_btn.click(
             fn=run_analysis,
@@ -328,6 +380,4 @@ if __name__ == "__main__":
         server_port=7860,
         show_error=True,
         inbrowser=True,
-        theme=gr.themes.Soft(primary_hue="blue", secondary_hue="slate"),
-        css=CSS,
     )

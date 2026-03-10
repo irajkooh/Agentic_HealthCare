@@ -43,9 +43,9 @@ def is_hf_space() -> bool:
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL    = "llama3.2"
 
-HF_MODEL   = os.environ.get("HF_MODEL", "meta-llama/Llama-3.2-3B-Instruct")
+HF_MODEL = os.environ.get("HF_MODEL", "meta-llama/Llama-3.2-3B-Instruct")
 HF_TOKEN   = os.environ.get("HF_TOKEN", "")
-HF_API_URL = f"https://router.huggingface.co/hf-inference/models/{HF_MODEL}/v1/chat/completions"
+HF_API_URL = "https://router.huggingface.co/v1/chat/completions"
 
 
 # ── Health check ───────────────────────────────────────────────────────────────
@@ -54,7 +54,7 @@ def check_llm_health() -> dict:
     if is_hf_space():
         return {
             "running": True, "model_ready": True,
-            "backend": "huggingface", "model": HF_MODEL,
+            "backend": "huggingface", "model": HF_MODEL + ":hf-inference",
             "note": "HuggingFace Inference API (serverless)",
         }
     try:
@@ -105,7 +105,7 @@ def _invoke_hf(prompt: str, system: str, temperature: float, max_tokens: int) ->
         headers["Authorization"] = f"Bearer {HF_TOKEN}"
 
     payload = {
-        "model": HF_MODEL, "messages": messages,
+        "model": HF_MODEL + ":hf-inference", "messages": messages,
         "max_tokens": max_tokens, "temperature": temperature, "stream": False,
     }
 

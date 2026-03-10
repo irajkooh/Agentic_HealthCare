@@ -8,7 +8,7 @@ sdk_version: 5.9.1
 app_file: app.py
 pinned: true
 license: mit
-short_description: Multi-Agent Clinical Decision Support — Triage, Diagnosis, Treatment
+short_description: Multi-Agent Clinical Decision Support: Triage to Treatment
 ---
 
 # 🏥 Healthcare AI Clinical Decision Support

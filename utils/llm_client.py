@@ -14,7 +14,7 @@ Detection strategy (three layers — any one is sufficient):
 
 Optional env vars (set as HF Space secrets or locally):
   OLLAMA_BASE_URL   override Ollama URL   (default: http://localhost:11434)
-  HF_MODEL          override HF model     (default: Qwen/Qwen2.5-72B-Instruct)
+  HF_MODEL          override HF model     (default: Qwen/Qwen2.5-7B-Instruct)
   HF_TOKEN          HF access token       (improves rate limits, not required)
 """
 
@@ -43,7 +43,7 @@ def is_hf_space() -> bool:
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL    = "llama3.2"
 
-HF_MODEL   = os.environ.get("HF_MODEL", "Qwen/Qwen2.5-72B-Instruct")
+HF_MODEL   = os.environ.get("HF_MODEL", "Qwen/Qwen2.5-7B-Instruct")
 HF_TOKEN   = os.environ.get("HF_TOKEN", "")
 HF_API_URL = f"https://api-inference.huggingface.co/models/{HF_MODEL}/v1/chat/completions"
 

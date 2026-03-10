@@ -1,9 +1,12 @@
 """
 Treatment Agent
-Generates evidence-based treatment plans based on triage and diagnosis.
+Generates evidence-based treatment plans from triage and diagnosis outputs.
 """
 
-from utils.ollama_client import invoke
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from utils.llm_client import invoke
 
 SYSTEM_PROMPT = """You are a Senior Attending Physician and Clinical Pharmacologist.
 Your role is to create comprehensive, evidence-based treatment plans based on triage urgency and differential diagnoses.
@@ -12,25 +15,15 @@ Guidelines:
 - Recommend treatment aligned with the primary diagnosis, considering differentials
 - Always check for medication allergies before recommending drugs
 - Consider patient's current medications for drug interactions
-- Follow standard clinical guidelines (ACC/AHA, WHO, NICE, etc.)
-- Include immediate interventions, pharmacological treatment, and non-pharmacological measures
-- Provide clear follow-up instructions
-- Add patient safety notes and warning signs to watch for
+- Follow standard clinical guidelines (ACC/AHA, WHO, NICE)
+- Include immediate interventions, pharmacological and non-pharmacological measures
+- Provide clear follow-up instructions and patient safety warnings
 
-IMPORTANT DISCLAIMER: This is a clinical decision support tool.
-All recommendations must be reviewed and approved by a licensed healthcare provider."""
+IMPORTANT: This is a clinical decision support tool. All recommendations must be
+reviewed and approved by a licensed healthcare provider before any action is taken."""
 
 
 def run_treatment(state: dict) -> dict:
-    """
-    Generate treatment plan based on triage and diagnosis outputs.
-
-    Args:
-        state: full patient state with triage and diagnosis outputs
-
-    Returns:
-        state dict with treatment_output and final_report added
-    """
     prompt = f"""
 PATIENT PROFILE:
 - Age: {state.get('age', 'Unknown')} | Gender: {state.get('gender', 'Unknown')}
@@ -46,63 +39,45 @@ TRIAGE FINDINGS:
 DIFFERENTIAL DIAGNOSIS:
 {state.get('diagnosis_output', 'Not available')}
 
-Please provide a comprehensive treatment plan in the following format:
+Provide a comprehensive treatment plan using this exact format:
 
 IMMEDIATE_INTERVENTIONS:
-  [List actions to take in the next 0-30 minutes]
+  [Actions to take in the next 0-30 minutes]
 
 PHARMACOLOGICAL_TREATMENT:
   Medication 1:
     Drug: [Name]
-    Dose: [Dose and route]
+    Dose & Route: [Dose and administration route]
     Frequency: [How often]
     Duration: [How long]
     Rationale: [Why this drug]
-    Interaction_Check: [Any interactions with current meds]
-  [Repeat for each medication]
+    Interaction Check: [Any interactions with current meds]
 
 NON_PHARMACOLOGICAL:
   [Lifestyle, positioning, monitoring, supportive measures]
 
 INVESTIGATIONS_TO_ORDER:
-  [Specific tests with clinical reasoning]
+  [Specific tests with reasoning]
 
 MONITORING_PARAMETERS:
   [What to monitor, how often, target values]
 
 PATIENT_EDUCATION:
-  [Key information to share with patient/family]
+  [Key information for patient/family]
 
 FOLLOW_UP_PLAN:
   Immediate: [Within hours/days]
-  Short_term: [Within 1-2 weeks]
+  Short_term: [1-2 weeks]
   Long_term: [Ongoing management]
 
 RED_FLAG_SYMPTOMS:
-  [Warning signs patient should watch for / return to ED criteria]
+  [Warning signs / return-to-ED criteria]
 
 REFERRALS:
   [Specialist referrals if needed]
 
 SAFETY_NOTES:
-  [Any allergy considerations, high-risk medications, monitoring requirements]
+  [Allergy considerations, high-risk medications, monitoring requirements]
 """
-
     response = invoke(prompt, system=SYSTEM_PROMPT, temperature=0.3)
-    return {**state, "treatment_output": response, "agent": "treatment"}
-
-
-if __name__ == "__main__":
-    test = {
-        "age": 52,
-        "gender": "Male",
-        "symptoms": "Crushing chest pain radiating to left arm.",
-        "vitals": "BP 160/100, HR 98, SpO2 94%",
-        "history": "Hypertension, Type 2 Diabetes",
-        "medications": "Metformin, Lisinopril",
-        "allergies": "Penicillin",
-        "triage_output": "URGENCY_LEVEL: CRITICAL",
-        "diagnosis_output": "PRIMARY_DIAGNOSIS: STEMI\nLikelihood: High"
-    }
-    result = run_treatment(test)
-    print(result["treatment_output"])
+    return {**state, "treatment_output": response}

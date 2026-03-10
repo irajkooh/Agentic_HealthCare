@@ -3,7 +3,10 @@ Diagnosis Agent
 Generates differential diagnoses based on triage assessment and patient data.
 """
 
-from utils.ollama_client import invoke
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from utils.llm_client import invoke
 
 SYSTEM_PROMPT = """You are a board-certified Internal Medicine physician with subspecialty training in Emergency Medicine.
 Your role is to generate a structured differential diagnosis based on patient presentation and triage findings.
@@ -13,22 +16,11 @@ Guidelines:
 - Include supporting and opposing evidence for each
 - Flag any must-not-miss diagnoses even if less likely
 - Suggest key investigations to confirm/rule out diagnoses
-- Use standard medical terminology but be clear
-- Do NOT prescribe treatment — that is handled by the Treatment Agent
-
-Your output must be evidence-based, structured, and clinically sound."""
+- Use standard medical terminology
+- Do NOT prescribe treatment — that is the Treatment Agent's role"""
 
 
 def run_diagnosis(state: dict) -> dict:
-    """
-    Run differential diagnosis based on triage output and patient data.
-
-    Args:
-        state: patient data dict with triage_output included
-
-    Returns:
-        state dict with diagnosis_output added
-    """
     prompt = f"""
 PATIENT DATA:
 - Age: {state.get('age', 'Unknown')} | Gender: {state.get('gender', 'Unknown')}
@@ -41,13 +33,13 @@ PATIENT DATA:
 TRIAGE ASSESSMENT:
 {state.get('triage_output', 'Not available')}
 
-Based on the above, provide your differential diagnosis in the following format:
+Provide differential diagnosis using this exact format:
 
 PRIMARY_DIAGNOSIS:
   Condition: [Most likely diagnosis]
   Likelihood: [High/Medium/Low]
-  Supporting Evidence: [Key findings supporting this]
-  Against: [Any findings that argue against]
+  Supporting Evidence: [Key findings]
+  Against: [Findings arguing against]
 
 DIFFERENTIAL_2:
   Condition: [Second diagnosis]
@@ -61,30 +53,13 @@ DIFFERENTIAL_3:
   Supporting Evidence: [Key findings]
   Against: [Findings against]
 
-MUST_NOT_MISS: [Any dangerous diagnoses that must be excluded, even if less likely]
+MUST_NOT_MISS: [Dangerous diagnoses to exclude even if less likely]
 
 RECOMMENDED_INVESTIGATIONS:
-  Immediate: [Tests needed urgently]
+  Immediate: [Urgent tests]
   Routine: [Tests that can wait]
 
-CLINICAL_REASONING: [Brief summary of your diagnostic reasoning process]
+CLINICAL_REASONING: [Brief summary of diagnostic reasoning]
 """
-
     response = invoke(prompt, system=SYSTEM_PROMPT, temperature=0.3)
-    return {**state, "diagnosis_output": response, "agent": "diagnosis"}
-
-
-if __name__ == "__main__":
-    test = {
-        "name": "John Doe",
-        "age": 52,
-        "gender": "Male",
-        "symptoms": "Crushing chest pain radiating to left arm, started 30 min ago. Sweating profusely.",
-        "vitals": "BP 160/100, HR 98, SpO2 94%",
-        "history": "Hypertension, Type 2 Diabetes",
-        "medications": "Metformin, Lisinopril",
-        "allergies": "Penicillin",
-        "triage_output": "URGENCY_LEVEL: CRITICAL\nUrgency due to classic ACS presentation."
-    }
-    result = run_diagnosis(test)
-    print(result["diagnosis_output"])
+    return {**state, "diagnosis_output": response}

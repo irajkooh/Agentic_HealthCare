@@ -1,287 +1,264 @@
 """
-Healthcare AI — Main Orchestrator
-===================================
-Kills ports 8000 and 7860 if in use, then starts:
-  • backend.py  → FastAPI on port 8000
-  • frontend.py → Gradio UI on port 7860
+Healthcare AI — Main Entry Point
+==================================
+Dual-mode launcher detected automatically:
 
-Usage:
-  python app.py
+  HuggingFace Spaces  (SYSTEM=spaces env var set by HF)
+      FastAPI runs in a background thread.
+      Gradio runs as the main process (required by HF).
+      LLM = HuggingFace Inference API (no Ollama needed).
 
-Stop:
-  Ctrl+C
+  Local development
+      Kills ports 8000 and 7860 if occupied.
+      Spawns backend.py (FastAPI) and frontend.py (Gradio) as
+      subprocesses with color-coded log streaming.
+      LLM = Ollama localhost:11434 with llama3.2.
+
+Usage (both environments):
+    python app.py
 """
 
-import subprocess
-import sys
 import os
+import sys
 import time
 import signal
-import platform
 import socket
+import platform
+import subprocess
+import threading
 import webbrowser
 
-PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
-BACKEND_PORT = 8000
+PROJECT_DIR   = os.path.dirname(os.path.abspath(__file__))
+BACKEND_PORT  = 8000
 FRONTEND_PORT = 7860
-PYTHON = sys.executable
+PYTHON        = sys.executable
 
-processes = []
+sys.path.insert(0, PROJECT_DIR)
 
 
-# ─── Port Management ──────────────────────────────────────────────────────────
+# ── Helpers ────────────────────────────────────────────────────────────────────
 
-def is_port_open(port: int) -> bool:
-    """Check if a port is currently in use."""
+def is_hf_space() -> bool:
+    return os.environ.get("SYSTEM") == "spaces"
+
+
+def port_is_open(port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(1)
-        return s.connect_ex(("localhost", port)) == 0
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
+def wait_for_port(port: int, timeout_s: float = 30.0) -> bool:
+    """Block until port is open or timeout. Returns True if open."""
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        if port_is_open(port):
+            return True
+        time.sleep(0.5)
+    return False
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  HF SPACES MODE
+# ══════════════════════════════════════════════════════════════════════════════
+
+def run_hf_mode():
+    """
+    Start FastAPI in a daemon thread, then launch Gradio as the main process.
+    This is required by HuggingFace Spaces (Gradio must be the main process).
+    """
+    import uvicorn
+    # Import app object — this also imports pipeline/agents which set sys.path
+    from backend import app as fastapi_app
+
+    def _backend():
+        uvicorn.run(fastapi_app, host="0.0.0.0", port=BACKEND_PORT, log_level="warning")
+
+    t = threading.Thread(target=_backend, daemon=True, name="fastapi-backend")
+    t.start()
+
+    ready = wait_for_port(BACKEND_PORT, timeout_s=30)
+    if ready:
+        print(f"[HF] Backend ready on :{BACKEND_PORT}")
+    else:
+        print(f"[HF] WARNING: backend did not open port {BACKEND_PORT} in 30s — continuing anyway")
+
+    from frontend import build_ui
+    demo = build_ui()
+    print(f"[HF] Launching Gradio on :{FRONTEND_PORT}")
+    demo.launch(server_name="0.0.0.0", server_port=FRONTEND_PORT)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  LOCAL MODE
+# ══════════════════════════════════════════════════════════════════════════════
+
+_processes: list = []
 
 
 def kill_port(port: int):
-    """Kill any process listening on the given port."""
+    """Kill whatever process is listening on port (macOS/Linux/Windows)."""
     system = platform.system()
-    killed = False
-
-    if system in ("Linux", "Darwin"):
+    if system in ("Darwin", "Linux"):
         try:
-            result = subprocess.run(
-                ["lsof", "-ti", f":{port}"],
-                capture_output=True, text=True
-            )
-            pids = result.stdout.strip().splitlines()
-            for pid in pids:
+            r = subprocess.run(["lsof", "-ti", f":{port}"],
+                               capture_output=True, text=True)
+            for pid in r.stdout.strip().splitlines():
                 pid = pid.strip()
                 if pid:
                     subprocess.run(["kill", "-9", pid], capture_output=True)
-                    print(f"   ✅ Killed PID {pid} on port {port}")
-                    killed = True
+                    print(f"   killed PID {pid} on port {port}")
         except FileNotFoundError:
-            # fallback: fuser
             try:
                 subprocess.run(["fuser", "-k", f"{port}/tcp"], capture_output=True)
-                killed = True
             except FileNotFoundError:
                 pass
-
     elif system == "Windows":
         try:
-            result = subprocess.run(
-                ["netstat", "-ano"],
-                capture_output=True, text=True
-            )
-            for line in result.stdout.splitlines():
+            r = subprocess.run(["netstat", "-ano"], capture_output=True, text=True)
+            for line in r.stdout.splitlines():
                 if f":{port}" in line and "LISTENING" in line:
-                    parts = line.split()
-                    pid = parts[-1]
-                    subprocess.run(["taskkill", "/PID", pid, "/F"], capture_output=True)
-                    print(f"   ✅ Killed PID {pid} on port {port}")
-                    killed = True
+                    pid = line.split()[-1]
+                    subprocess.run(["taskkill", "/F", "/PID", pid], capture_output=True)
+                    print(f"   killed PID {pid} on port {port}")
         except Exception as e:
-            print(f"   ⚠️  Could not kill port {port}: {e}")
-
-    if not killed and is_port_open(port):
-        print(f"   ⚠️  Port {port} still in use — proceeding anyway")
-
+            print(f"   WARNING: could not kill port {port}: {e}")
     time.sleep(0.5)
 
 
 def free_ports():
-    """Ensure both ports are free before launching."""
-    print("\n🔌 Checking ports...")
-
+    print("\nChecking ports...")
     for port in [BACKEND_PORT, FRONTEND_PORT]:
-        if is_port_open(port):
-            print(f"   Port {port} is in use → killing...")
+        if port_is_open(port):
+            print(f"  Port {port} is busy — killing...")
             kill_port(port)
-        else:
-            print(f"   Port {port} is free ✅")
-
-    # Final check
-    time.sleep(1)
-    for port in [BACKEND_PORT, FRONTEND_PORT]:
-        if is_port_open(port):
-            print(f"   ⚠️  Port {port} still occupied after kill attempt")
-        else:
-            print(f"   Port {port} confirmed free ✅")
+            time.sleep(0.3)
+        label = "free" if not port_is_open(port) else "still busy (proceeding anyway)"
+        print(f"  Port {port}: {label}")
 
 
-# ─── Process Launchers ────────────────────────────────────────────────────────
-
-def start_backend() -> subprocess.Popen:
-    """Launch the FastAPI backend."""
-    print("\n🚀 Starting Backend (FastAPI on :8000)...")
+def spawn(script: str, port: int, label: str) -> subprocess.Popen:
+    print(f"\nStarting {label}...")
     proc = subprocess.Popen(
-        [PYTHON, os.path.join(PROJECT_DIR, "backend.py")],
+        [PYTHON, os.path.join(PROJECT_DIR, script)],
         cwd=PROJECT_DIR,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
-        bufsize=1
+        bufsize=1,
     )
-    # Give backend time to bind
-    for _ in range(20):
-        time.sleep(0.5)
-        if is_port_open(BACKEND_PORT):
-            print(f"   ✅ Backend ready at http://localhost:{BACKEND_PORT}")
-            print(f"   📖 API docs   at http://localhost:{BACKEND_PORT}/docs")
-            return proc
-    print("   ⚠️  Backend taking longer than expected...")
+    if wait_for_port(port, timeout_s=45):
+        print(f"  {label} ready on :{port}")
+    else:
+        print(f"  {label} taking longer than expected (still starting...)")
     return proc
 
 
-def start_frontend() -> subprocess.Popen:
-    """Launch the Gradio frontend."""
-    print("\n🖥️  Starting Frontend (Gradio on :7860)...")
-    proc = subprocess.Popen(
-        [PYTHON, os.path.join(PROJECT_DIR, "frontend.py")],
-        cwd=PROJECT_DIR,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1
-    )
-    for _ in range(20):
-        time.sleep(0.5)
-        if is_port_open(FRONTEND_PORT):
-            print(f"   ✅ Frontend ready at http://localhost:{FRONTEND_PORT}")
-            return proc
-    print("   ⚠️  Frontend taking longer than expected...")
-    return proc
+def stream(proc: subprocess.Popen, tag: str):
+    BLUE, GREEN, RESET = "\033[94m", "\033[92m", "\033[0m"
+    color = BLUE if "BACKEND" in tag else GREEN
+    try:
+        for line in proc.stdout:
+            line = line.rstrip()
+            if line:
+                print(f"{color}[{tag}]{RESET} {line}", flush=True)
+    except Exception:
+        pass
 
 
-# ─── Log Streaming ────────────────────────────────────────────────────────────
-
-import threading
-
-def stream_logs(proc: subprocess.Popen, label: str):
-    """Stream subprocess output with label prefix."""
-    prefix_colors = {
-        "BACKEND ": "\033[94m",   # blue
-        "FRONTEND": "\033[92m",   # green
-    }
-    reset = "\033[0m"
-    color = prefix_colors.get(label, "")
-
-    for line in proc.stdout:
-        line = line.rstrip()
-        if line:
-            print(f"{color}[{label}]{reset} {line}")
-
-
-# ─── Shutdown Handler ─────────────────────────────────────────────────────────
-
-def shutdown(signum=None, frame=None):
-    print("\n\n🛑 Shutting down Healthcare AI system...")
-    for proc in processes:
+def shutdown(sig=None, frame=None):
+    print("\nShutting down Healthcare AI...")
+    for p in _processes:
         try:
-            proc.terminate()
-            proc.wait(timeout=5)
+            p.terminate()
+            p.wait(timeout=5)
         except Exception:
-            proc.kill()
-    print("   All processes stopped. Goodbye! 👋")
+            try:
+                p.kill()
+            except Exception:
+                pass
+    print("All processes stopped.")
     sys.exit(0)
 
 
-signal.signal(signal.SIGINT, shutdown)
-signal.signal(signal.SIGTERM, shutdown)
-
-
-# ─── Pre-flight Checks ────────────────────────────────────────────────────────
-
-def preflight_checks():
-    """Run system preflight checks."""
-    print("\n🔍 Pre-flight checks...")
-
-    # Check Ollama
+def preflight():
+    import requests
+    print("\nPre-flight checks:")
     try:
-        import requests
-        resp = requests.get("http://localhost:11434/api/tags", timeout=3)
-        if resp.status_code == 200:
-            models = [m["name"] for m in resp.json().get("models", [])]
-            has_model = any("llama3.2" in m for m in models)
-            print(f"   ✅ Ollama running | llama3.2: {'ready' if has_model else '❌ NOT FOUND'}")
-            if not has_model:
-                print("   💡 Run: ollama pull llama3.2")
-        else:
-            print("   ⚠️  Ollama returned unexpected status")
+        r = requests.get("http://localhost:11434/api/tags", timeout=3)
+        models     = [m["name"] for m in r.json().get("models", [])] if r.ok else []
+        has_model  = any("llama3.2" in m for m in models)
+        print(f"  Ollama  : running")
+        print(f"  llama3.2: {'ready' if has_model else 'NOT FOUND — run: ollama pull llama3.2'}")
     except Exception:
-        print("   ❌ Ollama not running — run: ollama serve")
-        print("   ⚠️  Continuing anyway (Ollama required for analysis)")
+        print("  Ollama  : NOT running — run: ollama serve")
 
-    # Check device
     try:
-        sys.path.insert(0, PROJECT_DIR)
         from utils.device import get_device_info
-        info = get_device_info()
-        print(f"   ✅ Device: {info['device'].upper()} — {info.get('note', '')}")
+        d = get_device_info()
+        print(f"  Device  : {d['device'].upper()} — {d.get('note','')}")
     except Exception as e:
-        print(f"   ⚠️  Device check failed: {e}")
+        print(f"  Device  : check failed ({e})")
 
 
-# ─── Main ─────────────────────────────────────────────────────────────────────
+def run_local_mode():
+    signal.signal(signal.SIGINT,  shutdown)
+    signal.signal(signal.SIGTERM, shutdown)
 
-def main():
-    print("╔═══════════════════════════════════════════════════════╗")
-    print("║       🏥 Healthcare AI Clinical Decision Support      ║")
-    print("║   Multi-Agent: Triage → Diagnosis → Treatment        ║")
-    print("╚═══════════════════════════════════════════════════════╝")
-    print(f"   Python  : {sys.version.split()[0]}")
-    print(f"   OS      : {platform.system()} {platform.machine()}")
+    print("=" * 58)
+    print("  Healthcare AI — Clinical Decision Support")
+    print("  Multi-Agent: Triage -> Diagnosis -> Treatment")
+    print("=" * 58)
+    print(f"  Python: {sys.version.split()[0]}  |  OS: {platform.system()} {platform.machine()}")
 
-    preflight_checks()
+    preflight()
     free_ports()
 
-    # Start backend first
-    backend_proc = start_backend()
-    processes.append(backend_proc)
+    backend  = spawn("backend.py",  BACKEND_PORT,  "Backend  (FastAPI :8000)")
+    _processes.append(backend)
+    frontend = spawn("frontend.py", FRONTEND_PORT, "Frontend (Gradio  :7860)")
+    _processes.append(frontend)
 
-    # Start frontend
-    frontend_proc = start_frontend()
-    processes.append(frontend_proc)
+    print()
+    print("=" * 58)
+    print("  Healthcare AI is RUNNING")
+    print(f"  UI       ->  http://localhost:{FRONTEND_PORT}")
+    print(f"  API      ->  http://localhost:{BACKEND_PORT}")
+    print(f"  API Docs ->  http://localhost:{BACKEND_PORT}/docs")
+    print("  Press Ctrl+C to stop")
+    print("=" * 58)
 
-    print("\n" + "═" * 55)
-    print("  ✅ Healthcare AI System is RUNNING")
-    print(f"  🖥️  UI      → http://localhost:{FRONTEND_PORT}")
-    print(f"  🔌 API     → http://localhost:{BACKEND_PORT}")
-    print(f"  📖 API Docs→ http://localhost:{BACKEND_PORT}/docs")
-    print("  Press Ctrl+C to stop all services")
-    print("═" * 55 + "\n")
+    # Open browser once frontend port is ready
+    def _open_browser():
+        if wait_for_port(FRONTEND_PORT, timeout_s=30):
+            webbrowser.open(f"http://localhost:{FRONTEND_PORT}")
+    threading.Thread(target=_open_browser, daemon=True).start()
 
-    # Automatically open the UI in the default web browser
-    webbrowser.open(f"http://localhost:{FRONTEND_PORT}")
+    threading.Thread(target=stream, args=(backend,  "BACKEND "), daemon=True).start()
+    threading.Thread(target=stream, args=(frontend, "FRONTEND"), daemon=True).start()
 
-    # Stream logs from both processes
-    backend_thread = threading.Thread(
-        target=stream_logs, args=(backend_proc, "BACKEND "), daemon=True
-    )
-    frontend_thread = threading.Thread(
-        target=stream_logs, args=(frontend_proc, "FRONTEND"), daemon=True
-    )
-    backend_thread.start()
-    frontend_thread.start()
-
-    # Keep alive, restart if process dies
     while True:
         time.sleep(3)
-        if backend_proc.poll() is not None:
-            print("⚠️  Backend crashed — restarting...")
-            processes.remove(backend_proc)
-            backend_proc = start_backend()
-            processes.append(backend_proc)
-            threading.Thread(
-                target=stream_logs, args=(backend_proc, "BACKEND "), daemon=True
-            ).start()
+        if backend.poll() is not None:
+            print("Backend crashed — restarting...")
+            _processes.remove(backend)
+            backend = spawn("backend.py", BACKEND_PORT, "Backend")
+            _processes.append(backend)
+            threading.Thread(target=stream, args=(backend, "BACKEND "), daemon=True).start()
+        if frontend.poll() is not None:
+            print("Frontend crashed — restarting...")
+            _processes.remove(frontend)
+            frontend = spawn("frontend.py", FRONTEND_PORT, "Frontend")
+            _processes.append(frontend)
+            threading.Thread(target=stream, args=(frontend, "FRONTEND"), daemon=True).start()
 
-        if frontend_proc.poll() is not None:
-            print("⚠️  Frontend crashed — restarting...")
-            processes.remove(frontend_proc)
-            frontend_proc = start_frontend()
-            processes.append(frontend_proc)
-            threading.Thread(
-                target=stream_logs, args=(frontend_proc, "FRONTEND"), daemon=True
-            ).start()
 
+# ── Main ───────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    main()
+    if is_hf_space():
+        print("HuggingFace Spaces detected — HF mode")
+        run_hf_mode()
+    else:
+        print("Local environment — local mode")
+        run_local_mode()

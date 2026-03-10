@@ -8,7 +8,6 @@ HF_TOKEN must be set as a Space secret.
 """
 
 import os
-import time
 import requests
 
 def is_hf_space() -> bool:

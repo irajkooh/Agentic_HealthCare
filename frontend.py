@@ -119,7 +119,9 @@ WORKFLOW_HTML = """
 # ── CSS ────────────────────────────────────────────────────────────────────────
 
 CSS = """
-.report-box textarea {
+.report-box textarea,
+.gr-textbox textarea,
+textarea[rows] {
   font-family: 'Courier New', monospace !important;
   font-size: 13px !important;
   line-height: 1.6 !important;

@@ -4,11 +4,14 @@ Unified LLM Client
 Local  -> Ollama @ localhost:11434 using llama3.2
 HF     -> HuggingFace InferenceClient using meta-llama/Llama-3.2-3B-Instruct
 
-HF_TOKEN must be set as a Space secret.
+HF_TOKEN must be set as a Space secret (required by HF Inference Providers).
 """
 
 import os
+import time
 import requests
+
+# ── Environment detection ──────────────────────────────────────────────────────
 
 def is_hf_space() -> bool:
     if os.environ.get("SPACE_ID"):
@@ -19,10 +22,17 @@ def is_hf_space() -> bool:
         return True
     return False
 
+
+# ── Config ─────────────────────────────────────────────────────────────────────
+
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL    = "llama3.2"
+
 HF_MODEL = os.environ.get("HF_MODEL", "meta-llama/Llama-3.2-3B-Instruct")
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
+
+
+# ── Health check ───────────────────────────────────────────────────────────────
 
 def check_llm_health() -> dict:
     if is_hf_space():
@@ -49,6 +59,9 @@ def check_llm_health() -> dict:
         "error": "Ollama not reachable. Run: ollama serve && ollama pull llama3.2",
     }
 
+
+# ── Ollama backend ─────────────────────────────────────────────────────────────
+
 def _invoke_ollama(prompt: str, system: str, temperature: float, max_tokens: int) -> str:
     messages = []
     if system:
@@ -62,15 +75,28 @@ def _invoke_ollama(prompt: str, system: str, temperature: float, max_tokens: int
     resp.raise_for_status()
     return resp.json()["message"]["content"]
 
+
+# ── HuggingFace Inference Providers backend ────────────────────────────────────
+
 def _invoke_hf(prompt: str, system: str, temperature: float, max_tokens: int) -> str:
-    from huggingface_hub import InferenceClient
+    try:
+        from huggingface_hub import InferenceClient
+    except ImportError:
+        raise RuntimeError("huggingface_hub not installed. Add it to requirements.txt")
+
     if not HF_TOKEN:
         raise RuntimeError("HF_TOKEN not set. Add it as a Space secret.")
-    client = InferenceClient(provider="auto", api_key=HF_TOKEN)
+
+    client = InferenceClient(
+        provider="together",
+        api_key=HF_TOKEN,
+    )
+
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
+
     response = client.chat.completions.create(
         model=HF_MODEL,
         messages=messages,
@@ -78,6 +104,9 @@ def _invoke_hf(prompt: str, system: str, temperature: float, max_tokens: int) ->
         temperature=temperature,
     )
     return response.choices[0].message.content
+
+
+# ── Public interface ───────────────────────────────────────────────────────────
 
 def invoke(
     prompt:      str,

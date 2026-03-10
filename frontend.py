@@ -1,7 +1,6 @@
 """
 Healthcare AI Frontend — Gradio UI
-Compatible with Gradio 4, 5, and 6 / local and HF Spaces.
-CSS injected as a <style> tag in HTML — works everywhere.
+Gradio 6 compatible.
 """
 
 import sys, os
@@ -117,48 +116,17 @@ WORKFLOW_HTML = """
 </div>
 """
 
-# ── CSS injected as HTML <style> tag — works on ALL Gradio versions ────────────
-# Never pass css= to gr.Blocks() or .launch() — different Gradio versions
-# handle this differently. Injecting via gr.HTML is the only universal approach.
+# ── CSS ────────────────────────────────────────────────────────────────────────
 
-CSS_HTML = """
-<style>
-/* ── Report textboxes: fixed height, always scrollable ── */
-.report-box textarea,
-.report-box .scroll-hide {
-    font-family: 'Courier New', 'Consolas', monospace !important;
-    font-size:   13px   !important;
-    line-height: 1.65   !important;
-    height:      420px  !important;
-    min-height:  420px  !important;
-    max-height:  420px  !important;
-    overflow-y:  auto   !important;
-    resize:      none   !important;
-    white-space: pre-wrap !important;
+CSS = """
+.report-box textarea {
+  font-family: 'Courier New', monospace !important;
+  font-size: 13px !important;
+  line-height: 1.6 !important;
+  max-height: 350px !important;
+  overflow-y: auto !important;
 }
-
-/* Full Report tab — taller */
-.full-report textarea,
-.full-report .scroll-hide {
-    height:     560px !important;
-    min-height: 560px !important;
-    max-height: 560px !important;
-    overflow-y: auto  !important;
-}
-
-/* Status bar */
-.status-bar p, .status-bar {
-    font-size:     13px   !important;
-    color:         #4b5563 !important;
-    padding:       6px 10px !important;
-    background:    #f9fafb !important;
-    border:        1px solid #e5e7eb !important;
-    border-radius: 6px !important;
-    margin:        0 !important;
-}
-
 footer { display: none !important; }
-</style>
 """
 
 TITLE_HTML = """
@@ -218,6 +186,7 @@ def run_analysis(name, age, gender, symptoms, vitals, history, medications, alle
         resp = requests.post(f"{BACKEND_URL}/analyze", json=payload, timeout=300)
 
         if resp.status_code == 503:
+            detail = ""
             try:
                 detail = resp.json().get("detail", "")
             except Exception:
@@ -252,18 +221,13 @@ def run_analysis(name, age, gender, symptoms, vitals, history, medications, alle
 def build_ui() -> gr.Blocks:
     with gr.Blocks(title="Healthcare AI") as demo:
 
-        # Inject CSS as HTML — works on all Gradio versions, local and HF
-        gr.HTML(CSS_HTML)
         gr.HTML(TITLE_HTML)
 
         # Status bar + buttons
         with gr.Row():
-            status_md    = gr.Markdown(
-                "*Checking backend status...*",
-                elem_classes=["status-bar"],
-            )
-            refresh_btn  = gr.Button("🔄 Refresh",      size="sm", scale=0)
-            workflow_btn = gr.Button("🔀 Show Workflow", size="sm", scale=0)
+            status_md    = gr.Markdown("*Checking backend status...*")
+            refresh_btn  = gr.Button("🔄 Refresh",       size="sm", scale=0)
+            workflow_btn = gr.Button("🔀 Show Workflow",  size="sm", scale=0)
 
         demo.load(fn=get_system_status, outputs=status_md)
         refresh_btn.click(fn=get_system_status, outputs=status_md)
@@ -298,32 +262,17 @@ def build_ui() -> gr.Blocks:
                         value="Unknown", scale=1,
                     )
 
-                symptoms_in  = gr.Textbox(
-                    label="🩺 Chief Complaint & Symptoms *",
-                    placeholder="Describe all symptoms in detail...",
-                    lines=4,
-                )
-                vitals_in    = gr.Textbox(
-                    label="📊 Vital Signs",
-                    placeholder="BP 120/80, HR 72, Temp 37C, SpO2 98%, RR 16",
-                    lines=2,
-                )
-                history_in   = gr.Textbox(
-                    label="📋 Medical History",
-                    placeholder="Past diagnoses, surgeries, chronic conditions...",
-                    lines=2,
-                )
+                symptoms_in  = gr.Textbox(label="🩺 Chief Complaint & Symptoms *",
+                                          placeholder="Describe all symptoms in detail...", lines=4)
+                vitals_in    = gr.Textbox(label="📊 Vital Signs",
+                                          placeholder="BP 120/80, HR 72, Temp 37C, SpO2 98%, RR 16", lines=2)
+                history_in   = gr.Textbox(label="📋 Medical History",
+                                          placeholder="Past diagnoses, surgeries, chronic conditions...", lines=2)
                 with gr.Row():
-                    meds_in      = gr.Textbox(
-                        label="💊 Current Medications",
-                        placeholder="Drug, dose, frequency...",
-                        lines=2, scale=1,
-                    )
-                    allergies_in = gr.Textbox(
-                        label="⚠️ Allergies",
-                        placeholder="Drug/food allergies",
-                        lines=2, scale=1,
-                    )
+                    meds_in      = gr.Textbox(label="💊 Current Medications",
+                                              placeholder="Drug, dose, frequency...", lines=2, scale=1)
+                    allergies_in = gr.Textbox(label="⚠️ Allergies",
+                                              placeholder="Drug/food allergies", lines=2, scale=1)
 
                 analyze_btn     = gr.Button("🔬 Run Clinical Analysis", variant="primary", size="lg")
                 pipeline_status = gr.Markdown("*Pipeline status will appear here.*")
@@ -336,38 +285,22 @@ def build_ui() -> gr.Blocks:
                     label="Click to load an example patient",
                 )
 
-            # Right — agent outputs (fixed height, all scrollable via CSS)
+            # Right — agent outputs
             with gr.Column(scale=2):
                 gr.Markdown("### 📄 Clinical Report")
 
                 with gr.Tab("🚨 Triage"):
-                    triage_out = gr.Textbox(
-                        label="Triage Agent",
-                        lines=20, max_lines=20,
-                        interactive=False,
-                        elem_classes=["report-box"],
-                    )
+                    triage_out = gr.Textbox(label="Triage Agent", lines=18,
+                                            interactive=False, elem_classes=["report-box"])
                 with gr.Tab("🔬 Diagnosis"):
-                    diagnosis_out = gr.Textbox(
-                        label="Diagnosis Agent",
-                        lines=20, max_lines=20,
-                        interactive=False,
-                        elem_classes=["report-box"],
-                    )
+                    diagnosis_out = gr.Textbox(label="Diagnosis Agent", lines=18,
+                                               interactive=False, elem_classes=["report-box"])
                 with gr.Tab("💊 Treatment"):
-                    treatment_out = gr.Textbox(
-                        label="Treatment Agent",
-                        lines=20, max_lines=20,
-                        interactive=False,
-                        elem_classes=["report-box"],
-                    )
+                    treatment_out = gr.Textbox(label="Treatment Agent", lines=18,
+                                               interactive=False, elem_classes=["report-box"])
                 with gr.Tab("📋 Full Report"):
-                    final_out = gr.Textbox(
-                        label="Complete Clinical Report",
-                        lines=26, max_lines=26,
-                        interactive=False,
-                        elem_classes=["report-box", "full-report"],
-                    )
+                    final_out = gr.Textbox(label="Complete Clinical Report", lines=24,
+                                           interactive=False, elem_classes=["report-box"])
 
         analyze_btn.click(
             fn=run_analysis,
@@ -395,4 +328,6 @@ if __name__ == "__main__":
         server_port=7860,
         show_error=True,
         inbrowser=True,
+        theme=gr.themes.Soft(primary_hue="blue", secondary_hue="slate"),
+        css=CSS,
     )

@@ -20,12 +20,13 @@ def is_hf_space() -> bool:
         return True
     return False
 
+
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL    = "llama3.2"
 
-HF_MODEL    = os.environ.get("HF_MODEL", "meta-llama//Llama-3.1-8B-Instruct")
+# Use correct model name (single slash)
+HF_MODEL    = os.environ.get("HF_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
 #HF_MODEL    = os.environ.get("HF_MODEL", "meta-llama/mistralai/Mistral-7B-Instruct-v0.2")
-HF_PROVIDER = os.environ.get("HF_PROVIDER", "novita")
 HF_TOKEN    = os.environ.get("HF_TOKEN", "")
 
 
@@ -73,7 +74,8 @@ def _invoke_hf(prompt: str, system: str, temperature: float, max_tokens: int) ->
     from huggingface_hub import InferenceClient
     if not HF_TOKEN:
         raise RuntimeError("HF_TOKEN not set. Add it as a Space secret.")
-    client = InferenceClient(provider=HF_PROVIDER, api_key=HF_TOKEN)
+    # Remove provider argument, use token only
+    client = InferenceClient(token=HF_TOKEN)
     messages = []
     if system:
         messages.append({"role": "system", "content": system})

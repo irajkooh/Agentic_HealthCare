@@ -821,9 +821,9 @@ SAMPLE_QUESTIONS = [
     "How many patients are there?",
     "Tell me about this patient.",
     "Tell me about the patient's triage report.",
-    "Tell me about the patient's diagnosis report?",
-    "Tell me about the patient's treatment report?",
-    "Give me the patient's full report in max 10 bullet points.",
+    "Tell me about the patient's diagnosis report.",
+    "Tell me about the patient's treatment report.",
+    "Summarize the patient's full report in max 10 bullet points.",
     "What is the main clinical concern of this patient?",
     "What is the recommended next steps for this patient?",
 ]

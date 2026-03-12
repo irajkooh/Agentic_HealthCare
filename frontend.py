@@ -743,9 +743,18 @@ def chat_respond(message, history, patient_state, all_patients):
     # Normalise to clean markdown so gr.Chatbot renders headings/bold/bullets properly
     if isinstance(answer, str) and not answer.startswith("Error") and not answer.startswith("Cannot"):
         answer = clean_for_chat(answer)
+
+    # FINAL DEFENSIVE FLATTENING: ensure assistant reply is always a string
+    def flatten_final(content):
+        if isinstance(content, dict):
+            return content.get("text") or content.get("content") or str(content)
+        elif isinstance(content, list):
+            return " ".join(flatten_final(item) for item in content)
+        return str(content)
+
     return history + [
-        {"role": "user",      "content": message},
-        {"role": "assistant", "content": answer},
+        {"role": "user",      "content": flatten_final(message)},
+        {"role": "assistant", "content": flatten_final(answer)},
     ], ""
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -129,15 +129,18 @@ async def analyze_patient(request: PatientRequest):
     }
 
 
+
 @app.post("/chat", tags=["Chat"])
 async def chat(request: ChatRequest):
     from utils.llm_client import invoke
     import json
     try:
+        print("[DEBUG] Received chat request:", request.messages)
         msgs     = [m.model_dump() for m in request.messages]
         system   = next((m["content"] for m in msgs if m["role"] == "system"), "")
         convo    = [m for m in msgs if m["role"] != "system"]
         if not convo or convo[-1]["role"] != "user":
+            print("[DEBUG] Invalid chat request: last message not from user.")
             raise HTTPException(status_code=400, detail="Last message must be from user.")
         history_text = ""
         for m in convo[:-1]:
@@ -145,6 +148,7 @@ async def chat(request: ChatRequest):
             history_text += f"{role}: {m['content']}\n"
         question = convo[-1]["content"]
         prompt   = f"{history_text}Physician: {question}" if history_text else question
+        print("[DEBUG] Prompt sent to LLM:", prompt)
         response = invoke(prompt=prompt, system=system, temperature=0.3, max_tokens=1024)
 
         # Sanitize — handle cases where response is a dict/object instead of plain string
@@ -172,10 +176,12 @@ async def chat(request: ChatRequest):
             except json.JSONDecodeError:
                 pass
 
+        print("[DEBUG] LLM response:", response)
         return {"response": response}
     except HTTPException:
         raise
     except Exception as e:
+        print("[DEBUG] Chat error:", e)
         raise HTTPException(status_code=500, detail=f"Chat error: {e}")
 
 

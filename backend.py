@@ -137,6 +137,12 @@ async def chat(request: ChatRequest):
     try:
         print("[DEBUG] Received chat request:", request.messages)
         msgs     = [m.model_dump() for m in request.messages]
+        # Type check and log every message's content
+        for idx, m in enumerate(msgs):
+            c = m.get("content")
+            if not isinstance(c, str):
+                print(f"[ERROR] Message at index {idx} has non-string content: {type(c)} - {c}")
+                raise HTTPException(status_code=400, detail=f"Message {idx} content is not a string: {type(c)}")
         system   = next((m["content"] for m in msgs if m["role"] == "system"), "")
         convo    = [m for m in msgs if m["role"] != "system"]
         if not convo or convo[-1]["role"] != "user":

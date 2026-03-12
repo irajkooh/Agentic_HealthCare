@@ -2,7 +2,7 @@
 Unified LLM Client
 ==================
 Local  -> Ollama @ localhost:11434 using llama3.2
-HF     -> HuggingFace InferenceClient using meta-llama/Llama3.2
+HF     -> HuggingFace InferenceClient using Mistral-7B, Mixtral-8x7B
          via "novita" provider (works with HF_TOKEN only, no extra API key)
 
 HF_TOKEN must be set as a Space secret.
@@ -23,7 +23,7 @@ def is_hf_space() -> bool:
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL    = "llama3.2"
 
-HF_MODEL    = os.environ.get("HF_MODEL", "meta-llama/Llama3.2")
+HF_MODEL    = os.environ.get("HF_MODEL", "Mistral-7B, Mixtral-8x7B")
 HF_PROVIDER = os.environ.get("HF_PROVIDER", "novita")
 HF_TOKEN    = os.environ.get("HF_TOKEN", "")
 

@@ -693,11 +693,19 @@ def chat_respond(message, history, patient_state, all_patients):
     if not message or not message.strip():
         return history, ""
     system_prompt = build_chat_system(patient_state, all_patients or [])
+    def flatten_content(content):
+        # If content is a dict or list, extract 'text' or 'content' recursively
+        if isinstance(content, dict):
+            return content.get("text") or content.get("content") or str(content)
+        elif isinstance(content, list):
+            return " ".join(flatten_content(item) for item in content)
+        return str(content)
+
     llm_messages = [{"role": "system", "content": system_prompt}]
     for msg in history:
         if isinstance(msg, dict) and msg.get("role") in ("user", "assistant"):
-            llm_messages.append({"role": msg["role"], "content": str(msg["content"])})
-    llm_messages.append({"role": "user", "content": message})
+            llm_messages.append({"role": msg["role"], "content": flatten_content(msg["content"])})
+    llm_messages.append({"role": "user", "content": flatten_content(message)})
     try:
         resp = requests.post(f"{BACKEND_URL}/chat", json={"messages": llm_messages}, timeout=120)
         if resp.status_code == 200:

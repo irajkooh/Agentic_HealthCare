@@ -130,8 +130,16 @@ async def analyze_patient(request: PatientRequest):
 
 
 
+from fastapi import Request as FastAPIRequest
+
 @app.post("/chat", tags=["Chat"])
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, raw_request: FastAPIRequest = None):
+    try:
+        if raw_request is not None:
+            raw_body = await raw_request.body()
+            print("[DEBUG] Raw request body:", raw_body)
+    except Exception as e:
+        print(f"[ERROR] Could not read raw request body: {e}")
     from utils.llm_client import invoke
     import json
     try:

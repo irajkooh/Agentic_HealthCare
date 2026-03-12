@@ -35,7 +35,7 @@ def check_llm_health() -> dict:
         return {
             "running": True, "model_ready": True,
             "backend": "huggingface", "model": HF_MODEL,
-            "note": "HuggingFace",
+            "note": f"HuggingFace/{HF_PROVIDER}",
         }
     try:
         resp = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=5)

@@ -9,6 +9,7 @@ Dual-mode launcher detected automatically:
       LLM = HuggingFace Inference API (no Ollama needed).
 
   Local development
+      Creates patients.db automatically if missing (empty, no prompts).
       Kills ports 8000 and 7860 if occupied.
       Spawns backend.py (FastAPI) and frontend.py (Gradio) as
       subprocesses with color-coded log streaming.
@@ -23,6 +24,7 @@ import sys
 import time
 import signal
 import socket
+import sqlite3
 import platform
 import subprocess
 import threading
@@ -32,8 +34,54 @@ PROJECT_DIR   = os.path.dirname(os.path.abspath(__file__))
 BACKEND_PORT  = 8000
 FRONTEND_PORT = 7860
 PYTHON        = sys.executable
+DB_PATH       = os.path.join(PROJECT_DIR, "patients.db")
 
 sys.path.insert(0, PROJECT_DIR)
+
+
+# ── Patient DB check ───────────────────────────────────────────────────────────
+# Runs BEFORE backend/frontend start so the prompt reaches the terminal.
+
+_CREATE_SQL = """
+    CREATE TABLE IF NOT EXISTS patients (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        name        TEXT NOT NULL,
+        age         INTEGER,
+        gender      TEXT,
+        symptoms    TEXT,
+        vitals      TEXT,
+        history     TEXT,
+        medications TEXT,
+        allergies   TEXT
+    )
+"""
+
+
+def _create_empty_db():
+    con = sqlite3.connect(DB_PATH)
+    con.execute(_CREATE_SQL)
+    con.commit()
+    con.close()
+
+
+
+
+def check_patient_db():
+    """
+    Ensure patients.db exists with the correct schema.
+    Creates an empty database silently if missing — no prompts.
+    """
+    existed = os.path.isfile(DB_PATH)
+    con = sqlite3.connect(DB_PATH)
+    con.execute(_CREATE_SQL)
+    count = con.execute("SELECT COUNT(*) FROM patients").fetchone()[0]
+    con.commit()
+    con.close()
+    if existed:
+        print(f"[DB] patients.db found — {count} patient(s)")
+    else:
+        print(f"[DB] patients.db not found — created empty database at {DB_PATH}")
+        print("[DB] Add patients via the UI (➕ New Patient button)")
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -65,10 +113,9 @@ def wait_for_port(port: int, timeout_s: float = 30.0) -> bool:
 def run_hf_mode():
     """
     Start FastAPI in a daemon thread, then launch Gradio as the main process.
-    This is required by HuggingFace Spaces (Gradio must be the main process).
+    Required by HuggingFace Spaces (Gradio must be the main process).
     """
     import uvicorn
-    # Import app object — this also imports pipeline/agents which set sys.path
     from backend import app as fastapi_app
 
     def _backend():
@@ -186,8 +233,8 @@ def preflight():
     print("\nPre-flight checks:")
     try:
         r = requests.get("http://localhost:11434/api/tags", timeout=3)
-        models     = [m["name"] for m in r.json().get("models", [])] if r.ok else []
-        has_model  = any("llama3.2" in m for m in models)
+        models    = [m["name"] for m in r.json().get("models", [])] if r.ok else []
+        has_model = any("llama3.2" in m for m in models)
         print(f"  Ollama  : running")
         print(f"  llama3.2: {'ready' if has_model else 'NOT FOUND — run: ollama pull llama3.2'}")
     except Exception:
@@ -228,7 +275,6 @@ def run_local_mode():
     print("  Press Ctrl+C to stop")
     print("=" * 58)
 
-    # Open browser once frontend port is ready
     def _open_browser():
         if wait_for_port(FRONTEND_PORT, timeout_s=30):
             webbrowser.open(f"http://localhost:{FRONTEND_PORT}")
@@ -261,4 +307,5 @@ if __name__ == "__main__":
         run_hf_mode()
     else:
         print("Local environment — local mode")
+        check_patient_db()   # ← blocks here if no DB, prompts before anything starts
         run_local_mode()

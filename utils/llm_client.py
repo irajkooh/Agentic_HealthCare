@@ -86,6 +86,31 @@ def _invoke_hf(prompt: str, system: str, temperature: float, max_tokens: int) ->
     return response.choices[0].message.content
 
 
+def _sanitize(text: str) -> str:
+    """Strip JSON wrapping that some model versions return e.g. {"text":"...","type":"text"}"""
+    import json
+    if not isinstance(text, str):
+        text = str(text)
+    stripped = text.strip()
+    if stripped.startswith("{") and stripped.endswith("}"):
+        try:
+            parsed = json.loads(stripped)
+            if isinstance(parsed, dict):
+                return parsed.get("text") or parsed.get("content") or text
+        except (json.JSONDecodeError, ValueError):
+            pass
+    if stripped.startswith("[") and stripped.endswith("]"):
+        try:
+            parsed = json.loads(stripped)
+            if isinstance(parsed, list):
+                parts = [item.get("text") or item.get("content") or "" 
+                         for item in parsed if isinstance(item, dict)]
+                return "\n".join(p for p in parts if p) or text
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return text
+
+
 def invoke(
     prompt:      str,
     system:      str   = "",
@@ -94,8 +119,8 @@ def invoke(
     max_tokens:  int   = 1024,
 ) -> str:
     if is_hf_space():
-        return _invoke_hf(prompt, system, temperature, max_tokens)
+        return _sanitize(_invoke_hf(prompt, system, temperature, max_tokens))
     try:
-        return _invoke_ollama(prompt, system, temperature, max_tokens)
+        return _sanitize(_invoke_ollama(prompt, system, temperature, max_tokens))
     except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
-        return _invoke_hf(prompt, system, temperature, max_tokens)
+        return _sanitize(_invoke_hf(prompt, system, temperature, max_tokens))

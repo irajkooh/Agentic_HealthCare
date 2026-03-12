@@ -53,6 +53,13 @@ class PatientRequest(BaseModel):
     allergies:   Optional[str] = Field(default="NKDA")
 
 
+class ChatMessage(BaseModel):
+    role:    str
+    content: str
+
+class ChatRequest(BaseModel):
+    messages: list[ChatMessage]
+
 class AnalysisResponse(BaseModel):
     success:          bool
     patient_name:     str
@@ -120,6 +127,56 @@ async def analyze_patient(request: PatientRequest):
         "agents_completed": result.get("completed_agents", []),
         "status":           result.get("status",           "complete"),
     }
+
+
+@app.post("/chat", tags=["Chat"])
+async def chat(request: ChatRequest):
+    from utils.llm_client import invoke
+    import json
+    try:
+        msgs     = [m.model_dump() for m in request.messages]
+        system   = next((m["content"] for m in msgs if m["role"] == "system"), "")
+        convo    = [m for m in msgs if m["role"] != "system"]
+        if not convo or convo[-1]["role"] != "user":
+            raise HTTPException(status_code=400, detail="Last message must be from user.")
+        history_text = ""
+        for m in convo[:-1]:
+            role  = "Physician" if m["role"] == "user" else "Assistant"
+            history_text += f"{role}: {m['content']}\n"
+        question = convo[-1]["content"]
+        prompt   = f"{history_text}Physician: {question}" if history_text else question
+        response = invoke(prompt=prompt, system=system, temperature=0.3, max_tokens=1024)
+
+        # Sanitize — handle cases where response is a dict/object instead of plain string
+        if isinstance(response, dict):
+            response = response.get("text") or response.get("content") or str(response)
+        elif isinstance(response, list):
+            # e.g. [{"type": "text", "text": "..."}]
+            parts = []
+            for item in response:
+                if isinstance(item, dict):
+                    parts.append(item.get("text") or item.get("content") or "")
+                else:
+                    parts.append(str(item))
+            response = "\n".join(p for p in parts if p)
+        else:
+            response = str(response)
+
+        # Strip any residual JSON wrapping like {"text": "...", "type": "text"}
+        stripped = response.strip()
+        if stripped.startswith("{") and stripped.endswith("}"):
+            try:
+                parsed = json.loads(stripped)
+                if isinstance(parsed, dict):
+                    response = parsed.get("text") or parsed.get("content") or response
+            except json.JSONDecodeError:
+                pass
+
+        return {"response": response}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Chat error: {e}")
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────

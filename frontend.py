@@ -11,12 +11,7 @@ from threading import Lock
 from datetime import datetime
 import gradio as gr
 
-import os as _os
-BACKEND_URL = (
-    "http://127.0.0.1:8000"
-    if _os.environ.get("SYSTEM") == "spaces"
-    else "http://localhost:8000"
-)
+BACKEND_URL = "http://localhost:8000"
 _HERE       = os.path.dirname(os.path.abspath(__file__))
 DB_PATH     = os.path.join(_HERE, "patients.db")
 
@@ -635,30 +630,21 @@ CHAT_SYSTEM = (
 
 # Clinical keywords — if any appear in the message and no analysis exists,
 # short-circuit in Python before the LLM is even called.
-# Any message that references a specific patient without a loaded analysis
-# should be blocked. We detect two cases:
-#   1. Message references "this patient" / "the patient" / patient by name → patient-specific
-#   2. Message contains clinical keywords → clinical question
-# General questions (how many, how can you help) always pass through.
-
-_GENERAL_PATTERNS = (
-    "how many", "how can you", "what can you", "what is this", "who are you",
-    "list patient", "list all", "show patient", "show all",
-)
-
-_PATIENT_REF_PATTERNS = (
-    "this patient", "the patient", "about patient", "tell me about",
-    "brief", "summarize", "summary", "overview", "profile",
-    "who is", "tell me",
-)
-
 _CLINICAL_KEYWORDS = (
     "diagnos", "treatment", "triage", "symptom", "vital", "medication", "drug",
     "allerg", "medical history", "prognos", "urgent", "condition", "disease",
     "clinical report", "finding", "prescription", "dose", "interact",
     "lab result", "scan", "xray", "x-ray", "ecg", "ekg",
     "blood pressure", "heart rate", "chest pain", "fever",
-    "what is wrong", "full report", "analyse", "analyze",
+    "tell me about this patient", "what is wrong with",
+    "full report", "triage report", "diagnosis report", "treatment plan",
+    "analyse", "analyze",
+)
+
+# General questions that must always pass through regardless of keywords
+_GENERAL_PATTERNS = (
+    "how many", "how can you", "what can you", "what is this", "who are you",
+    "list patient", "list all", "show patient", "show all",
 )
 
 def build_chat_system(patient_state, all_patients):
@@ -707,10 +693,9 @@ def chat_respond(message, history, patient_state, all_patients):
     )
     if not has_analysis:
         msg_lower = message.lower()
-        is_general  = any(p in msg_lower for p in _GENERAL_PATTERNS)
-        is_patient_ref = any(p in msg_lower for p in _PATIENT_REF_PATTERNS)
-        is_clinical = any(kw in msg_lower for kw in _CLINICAL_KEYWORDS)
-        if not is_general and (is_patient_ref or is_clinical):
+        is_general = any(p in msg_lower for p in _GENERAL_PATTERNS)
+        is_clinical = not is_general and any(kw in msg_lower for kw in _CLINICAL_KEYWORDS)
+        if is_clinical:
             answer = "Please select a patient and click Load & Analyse first."
             return history + [
                 {"role": "user",      "content": message},
@@ -799,13 +784,8 @@ def run_analysis(name, age, gender, symptoms, vitals, history, medications, alle
     try:
         resp = requests.post(f"{BACKEND_URL}/analyze", json=payload, timeout=300)
         if resp.status_code != 200:
-            try:
-                detail = resp.json().get("detail") or resp.text[:300]
-            except Exception:
-                detail = resp.text[:300]
-            msg = f"Backend error {resp.status_code}: {detail}"
-            e = make_report_html(msg)
-            return (msg, e, e, e, e, {})
+            e = make_report_html(f"Error {resp.status_code}")
+            return (f"Error {resp.status_code}", e, e, e, e, {})
         data = resp.json()
         done = " → ".join(f"✅ {a.capitalize()}" for a in data.get("agents_completed", []))
         state = {
@@ -867,15 +847,12 @@ SAMPLE_QUESTIONS = [
     "How can you help me?",
     "How many patients are there?",
     "Tell me about this patient.",
-    "What doctor this patient should see?", 
     "Tell me about the patient's triage report.",
     "Tell me about the patient's diagnosis report.",
     "Tell me about the patient's treatment report.",
-    "what are the side effects of the patient's medications?",
     "Summarize the patient's full report in max 10 bullet points.",
     "What is the main clinical concern of this patient?",
     "What is the recommended next steps for this patient?",
-    "What Lab works you advice for this patient, and why?",
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -988,7 +965,7 @@ def _tts_report_js(elem_id: str) -> str:
         "  }\n"
         "  // Voices may not be loaded yet on first call\n"
         "  if (window.speechSynthesis.getVoices().length > 0) { speak(); }\n"
-        "  else { window.speechSynthesis.onvoiceschanged = speak; setTimeout(speak, 250); }\n"
+        "  else { var _spoken=false;window.speechSynthesis.onvoiceschanged=function(){if(!_spoken){_spoken=true;speak();}};setTimeout(function(){if(!_spoken){_spoken=true;speak();}},250); }\n"
         "  return [];\n"
         "}"
     )
@@ -1086,7 +1063,7 @@ def _chat_tts_js() -> str:
         "    speechSynthesis.speak(u);\n"
         "  }\n"
         "  if (speechSynthesis.getVoices().length>0){speak();}\n"
-        "  else{speechSynthesis.onvoiceschanged=speak; setTimeout(speak,250);}\n"
+        "  else{var _spoken=false;speechSynthesis.onvoiceschanged=function(){if(!_spoken){_spoken=true;speak();}};setTimeout(function(){if(!_spoken){_spoken=true;speak();}},250);}\n"
         "  return [];\n"
         "}"
     )

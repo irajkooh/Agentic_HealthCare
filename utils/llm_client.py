@@ -24,10 +24,12 @@ def is_hf_space() -> bool:
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL    = "llama3.2"
 
-# Use correct model name (single slash)
-HF_MODEL    = os.environ.get("HF_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
-#HF_MODEL    = os.environ.get("HF_MODEL", "meta-llama/mistralai/Mistral-7B-Instruct-v0.2")
-HF_TOKEN    = os.environ.get("HF_TOKEN", "")
+# Free models on HF Inference API (no credits needed, just HF_TOKEN):
+# - mistralai/Mistral-7B-Instruct-v0.3  (reliable, good quality)
+# - HuggingFaceH4/zephyr-7b-beta        (fast, free tier)
+# - microsoft/Phi-3-mini-4k-instruct    (lightweight, free)
+HF_MODEL = os.environ.get("HF_MODEL", "mistralai/Mistral-7B-Instruct-v0.3")
+HF_TOKEN = os.environ.get("HF_TOKEN", "")
 
 
 def check_llm_health() -> dict:

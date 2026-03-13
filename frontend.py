@@ -722,10 +722,27 @@ def chat_respond(message, history, patient_state, all_patients):
             return " ".join(flatten_content(item) for item in content)
         return str(content)
 
-    llm_messages = [{"role": "system", "content": system_prompt}]
+    # Build clean history — skip redirect messages and stale pre-analysis turns.
+    # Redirect messages confuse the LLM into thinking the topic changed.
+    _REDIRECT = "Please select a patient and click Load & Analyse first."
+    clean_history = []
     for msg in history:
-        if isinstance(msg, dict) and msg.get("role") in ("user", "assistant"):
-            llm_messages.append({"role": msg["role"], "content": flatten_content(msg["content"])})
+        if not isinstance(msg, dict):
+            continue
+        if msg.get("role") not in ("user", "assistant"):
+            continue
+        txt = flatten_content(msg.get("content", ""))
+        # Drop redirect assistant messages and the user turn that triggered them
+        if txt.strip() == _REDIRECT:
+            # Also drop the preceding user message (the one that got redirected)
+            if clean_history and clean_history[-1]["role"] == "user":
+                clean_history.pop()
+            continue
+        clean_history.append({"role": msg["role"], "content": txt})
+
+    llm_messages = [{"role": "system", "content": system_prompt}]
+    for msg in clean_history:
+        llm_messages.append(msg)
     llm_messages.append({"role": "user", "content": flatten_content(message)})
     try:
         resp = requests.post(f"{BACKEND_URL}/chat", json={"messages": llm_messages}, timeout=120)
@@ -858,14 +875,11 @@ SAMPLE_QUESTIONS = [
     "How can you help me?",
     "How many patients are there?",
     "Tell me about this patient.",
-    "What doctor this patient should see?",
     "Tell me about the patient's triage report.",
     "Tell me about the patient's diagnosis report.",
     "Tell me about the patient's treatment report.",
-    "What are the side effects of the patient's treatement?",
     "Summarize the patient's full report in max 10 bullet points.",
     "What is the main clinical concern of this patient?",
-    "List the required Lab works for this patient, and why?",
     "What is the recommended next steps for this patient?",
 ]
 

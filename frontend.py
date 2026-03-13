@@ -875,7 +875,7 @@ SAMPLE_QUESTIONS = [
     "How can you help me?",
     "Tell me about this patient.",
     "What doctor this patient should see?",
-    "Give me the address of doctors the patient can refer tn Chicago.",
+    "Give me the address of doctors the patient can refer in Chicago.",
     "Tell me about the patient's triage report.",
     "Tell me about the patient's diagnosis report.",
     "Tell me about the patient's treatment report.",

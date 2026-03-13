@@ -24,17 +24,12 @@ def is_hf_space() -> bool:
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL    = "llama3.2"
 
-# HF Inference Providers now require credits — even "free" models.
-# We use Groq instead: free tier, fast, supports llama3/mixtral, no credits needed.
-# Get a free API key at: https://console.groq.com
-# Set GROQ_API_KEY as a Space secret.
-#
-# Fallback chain: Groq → HF Inference API (if GROQ_API_KEY not set)
-HF_MODEL   = os.environ.get("HF_MODEL", "mistralai/Mistral-7B-Instruct-v0.3")
-HF_TOKEN   = os.environ.get("HF_TOKEN", "")
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-# llama3-8b-8192 is free on Groq, fast, and good for clinical tasks
-GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama3-8b-8192")
+# Free models on HF Inference API (no credits needed, just HF_TOKEN):
+# - mistralai/Mistral-7B-Instruct-v0.3  (reliable, good quality)
+# - HuggingFaceH4/zephyr-7b-beta        (fast, free tier)
+# - microsoft/Phi-3-mini-4k-instruct    (lightweight, free)
+HF_MODEL = os.environ.get("HF_MODEL", "mistralai/Mistral-7B-Instruct-v0.3")
+HF_TOKEN = os.environ.get("HF_TOKEN", "")
 
 
 def check_llm_health() -> dict:
@@ -75,28 +70,6 @@ def _invoke_ollama(prompt: str, system: str, temperature: float, max_tokens: int
     resp = requests.post(f"{OLLAMA_BASE_URL}/api/chat", json=payload, timeout=180)
     resp.raise_for_status()
     return resp.json()["message"]["content"]
-
-
-def _invoke_groq(prompt: str, system: str, temperature: float, max_tokens: int) -> str:
-    """Call Groq API — free tier, fast, no credits needed. Get key at console.groq.com"""
-    from groq import Groq
-    client = Groq(api_key=GROQ_API_KEY)
-    messages = []
-    if system:
-        if len(system) > 3000:
-            system = system[:3000] + "\n...[truncated]"
-        messages.append({"role": "system", "content": system})
-    if len(prompt) > 4000:
-        prompt = prompt[:4000] + "\n...[truncated]"
-    messages.append({"role": "user", "content": prompt})
-    print(f"[GROQ] Calling {GROQ_MODEL}, system={len(system)}chars, prompt={len(prompt)}chars", flush=True)
-    response = client.chat.completions.create(
-        model=GROQ_MODEL,
-        messages=messages,
-        max_tokens=max_tokens,
-        temperature=temperature,
-    )
-    return response.choices[0].message.content
 
 
 def _invoke_hf(prompt: str, system: str, temperature: float, max_tokens: int) -> str:
@@ -165,13 +138,8 @@ def invoke(
     max_tokens:  int   = 1024,
 ) -> str:
     if is_hf_space():
-        if GROQ_API_KEY:
-            return _sanitize(_invoke_groq(prompt, system, temperature, max_tokens))
-        # Fallback to HF if no Groq key (will use credits)
         return _sanitize(_invoke_hf(prompt, system, temperature, max_tokens))
     try:
         return _sanitize(_invoke_ollama(prompt, system, temperature, max_tokens))
     except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
-        if GROQ_API_KEY:
-            return _sanitize(_invoke_groq(prompt, system, temperature, max_tokens))
         return _sanitize(_invoke_hf(prompt, system, temperature, max_tokens))

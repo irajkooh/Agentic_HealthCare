@@ -15,7 +15,8 @@ langchain-community>=0.2.0
 
 # ── LLM clients ───────────────────────────────────────────────────────────────
 ollama>=0.2.0                  # local Ollama inference
-huggingface-hub>=0.23.0        # HF Inference API (Spaces deployment)
+huggingface-hub>=0.23.0        # HF token auth
+groq>=0.9.0                    # Groq free API (HF Spaces deployment)
 
 # ── Workflow diagram (draw_mermaid_png) ───────────────────────────────────────
 # Option A — pure Python, no system install needed (recommended):

@@ -34,7 +34,7 @@ HF_MODEL   = os.environ.get("HF_MODEL", "mistralai/Mistral-7B-Instruct-v0.3")
 HF_TOKEN   = os.environ.get("HF_TOKEN", "")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 # llama3-8b-8192 is free on Groq, fast, and good for clinical tasks
-GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama3-8b-8192")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
 
 
 def check_llm_health() -> dict:

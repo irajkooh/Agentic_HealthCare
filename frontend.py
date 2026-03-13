@@ -617,15 +617,25 @@ def get_system_status() -> str:
 # Chat
 # ─────────────────────────────────────────────────────────────────────────────
 
-CHAT_SYSTEM = (
+CHAT_SYSTEM_WITH_ANALYSIS = (
+    "You are a clinical decision support assistant. "
+    "The patient currently loaded is: {analyzed_name}.\n"
+    "Answer concisely and clinically. Plain text ONLY.\n\n"
+    "{analysis_context}\n"
+    "Use the PROCESSED ANALYSIS above to answer all questions about this patient. "
+    "Do not ask for the patient name — it is already provided above.\n"
+)
+
+CHAT_SYSTEM_NO_ANALYSIS = (
     "You are a clinical decision support assistant.\n"
     "Answer concisely and clinically. Plain text ONLY.\n\n"
     "{patients_context}"
-    "{analysis_context}\n"
+    "PROCESSED ANALYSIS: None yet.\n\n"
     "RULES:\n"
-    "- Answer only from the PROCESSED ANALYSIS above. Do not invent or assume.\n"
+    "- No patient has been analysed yet.\n"
     "- For general questions (how can you help, patient count, system info) answer freely.\n"
-    "- For any clinical question, use only the PROCESSED ANALYSIS provided.\n"
+    "- For any patient-specific or clinical question, reply exactly: "
+    "'Please select a patient and click Load & Analyse first.'\n"
 )
 
 # Clinical keywords — if any appear in the message and no analysis exists,
@@ -654,18 +664,6 @@ def build_chat_system(patient_state, all_patients):
         and patient_state.get("analyzed_name")
     )
 
-    if all_patients:
-        # Only expose name/age/gender/registered — never clinical data without analysis
-        lines = [f"PATIENT LIST ({len(all_patients)} total) — names/demographics only:\n"]
-        for i, p in enumerate(all_patients, 1):
-            lines.append(
-                f"  {i}. {p.get('name','?')}, Age {p.get('age','?')}, "
-                f"{p.get('gender','?')}, Registered: {p.get('created_at','')}\n"
-            )
-        patients_ctx = "\n".join(lines) + "\n\n"
-    else:
-        patients_ctx = "No patients in database.\n\n"
-
     if has_analysis:
         analyzed_name = patient_state.get("analyzed_name", "")
         analysis_ctx = (
@@ -674,10 +672,23 @@ def build_chat_system(patient_state, all_patients):
             f"DIAGNOSIS:\n{patient_state.get('diagnosis_output','')}\n\n"
             f"TREATMENT:\n{patient_state.get('treatment_output','')}\n"
         )
+        return CHAT_SYSTEM_WITH_ANALYSIS.format(
+            analyzed_name=analyzed_name,
+            analysis_ctx=analysis_ctx,
+            analysis_context=analysis_ctx,
+        )
     else:
-        analysis_ctx = "PROCESSED ANALYSIS: None yet.\n"
-
-    return CHAT_SYSTEM.format(patients_context=patients_ctx, analysis_context=analysis_ctx)
+        if all_patients:
+            lines = [f"PATIENT LIST ({len(all_patients)} total):\n"]
+            for i, p in enumerate(all_patients, 1):
+                lines.append(
+                    f"  {i}. {p.get('name','?')}, Age {p.get('age','?')}, "
+                    f"{p.get('gender','?')}\n"
+                )
+            patients_ctx = "\n".join(lines) + "\n\n"
+        else:
+            patients_ctx = "No patients in database.\n\n"
+        return CHAT_SYSTEM_NO_ANALYSIS.format(patients_context=patients_ctx)
 
 def chat_respond(message, history, patient_state, all_patients):
     if not isinstance(history, list):
@@ -847,14 +858,11 @@ SAMPLE_QUESTIONS = [
     "How can you help me?",
     "How many patients are there?",
     "Tell me about this patient.",
-    "What doctor this patient should see?",
     "Tell me about the patient's triage report.",
     "Tell me about the patient's diagnosis report.",
     "Tell me about the patient's treatment report.",
-    "What are the side effects of the patient's treatement?",
     "Summarize the patient's full report in max 10 bullet points.",
     "What is the main clinical concern of this patient?",
-    "List the required Lab works for this patient, and why?",
     "What is the recommended next steps for this patient?",
 ]
 

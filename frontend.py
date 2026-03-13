@@ -844,9 +844,9 @@ def register_routes(fastapi_app):
 # ─────────────────────────────────────────────────────────────────────────────
 
 SAMPLE_QUESTIONS = [
-    "How can you help me?",
     "How many patients are there?",
-    "Tell me about this patient.",
+    "What doctor each patient should see?",
+    "Tell me brifly about this patient.",
     "Tell me about the patient's triage report.",
     "Tell me about the patient's diagnosis report.",
     "Tell me about the patient's treatment report.",

@@ -21,16 +21,35 @@ from pydantic import BaseModel, Field
 
 from utils.device     import get_device_info
 from utils.llm_client import check_llm_health, is_hf_space
-from pipeline         import run_pipeline
+
+from pipeline         import run_pipeline, _get_graph
+from fastapi.responses import PlainTextResponse
 
 
 # ── App ────────────────────────────────────────────────────────────────────────
+
 
 app = FastAPI(
     title="Healthcare Multi-Agent AI",
     description="LangGraph multi-agent clinical decision support",
     version="2.0.0",
 )
+
+
+# ── Mermaid Workflow Route ─────────────────────────────────────────────
+@app.get("/workflow-mermaid", tags=["System"])
+async def workflow_mermaid():
+    """Return the compiled LangGraph workflow as Mermaid diagram."""
+    from pipeline import export_mermaid_workflow
+    graph = _get_graph()
+    if hasattr(graph, "to_mermaid"):
+        return PlainTextResponse(graph.to_mermaid(), media_type="text/plain")
+    # Use custom export if to_mermaid is not available
+    try:
+        mermaid = export_mermaid_workflow()
+        return PlainTextResponse(mermaid, media_type="text/plain")
+    except Exception:
+        return PlainTextResponse("Mermaid diagram not available.", media_type="text/plain")
 
 app.add_middleware(
     CORSMiddleware,

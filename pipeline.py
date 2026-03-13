@@ -175,8 +175,43 @@ def build_graph():
     return g.compile()
 
 
+
 # Compiled graph — module-level singleton
 _graph = None
+
+# ── Mermaid Export ─────────────────────────────────────────────────────────────
+def export_mermaid_workflow() -> str:
+    """
+    Returns a Mermaid diagram string for the current workflow.
+    """
+    # Nodes and edges as defined in build_graph()
+    nodes = [
+        ("supervisor", "Supervisor"),
+        ("triage", "Triage"),
+        ("diagnosis", "Diagnosis"),
+        ("treatment", "Treatment"),
+        ("report", "Report"),
+    ]
+    edges = [
+        ("supervisor", "triage", "if triage not done"),
+        ("supervisor", "diagnosis", "if triage done, diagnosis not done"),
+        ("supervisor", "treatment", "if triage & diagnosis done, treatment not done"),
+        ("supervisor", "report", "if all done except report"),
+        ("triage", "supervisor", "done"),
+        ("diagnosis", "supervisor", "done"),
+        ("treatment", "supervisor", "done"),
+        ("report", "END", "done"),
+    ]
+    mermaid = ["flowchart TD"]
+    for node, label in nodes:
+        mermaid.append(f"    {node}[\"{label}\"]")
+    mermaid.append("    END((End))")
+    for src, dst, cond in edges:
+        if cond == "done":
+            mermaid.append(f"    {src} --> {dst}")
+        else:
+            mermaid.append(f"    {src} --|{cond}| {dst}")
+    return "\n".join(mermaid)
 
 def _get_graph():
     global _graph

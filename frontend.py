@@ -432,36 +432,7 @@ _db_lock = Lock()
 # HTML helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-WORKFLOW_HTML = """
-<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:28px 20px;margin:8px 0;">
-  <h3 style="text-align:center;color:#1e3a5f;margin:0 0 24px 0;font-size:1.1rem;">🔀 LangGraph Multi-Agent Pipeline</h3>
-  <div style="display:flex;justify-content:center;margin-bottom:6px;">
-    <div style="background:#1e3a5f;color:white;padding:10px 28px;border-radius:8px;font-weight:600;">📋 Patient Input</div>
-  </div>
-  <div style="text-align:center;font-size:1.4rem;color:#64748b;">↓</div>
-  <div style="display:flex;justify-content:center;margin-bottom:4px;">
-    <div style="background:#7c3aed;color:white;padding:10px 28px;border-radius:8px;font-weight:600;text-align:center;">
-      🧠 Supervisor Agent<br><span style="font-size:0.75rem;font-weight:400;opacity:0.9;">Deterministic routing</span>
-    </div>
-  </div>
-  <div style="text-align:center;font-size:1.4rem;color:#64748b;">↓</div>
-  <div style="display:flex;justify-content:space-between;gap:12px;margin-bottom:4px;">
-    <div style="flex:1;background:#dc2626;color:white;padding:12px 10px;border-radius:8px;text-align:center;">
-      <div style="font-size:1.3rem;">🚨</div><b>Triage</b><div style="font-size:0.72rem;opacity:0.9;margin-top:4px;">Urgency + red flags</div>
-    </div>
-    <div style="flex:1;background:#0369a1;color:white;padding:12px 10px;border-radius:8px;text-align:center;">
-      <div style="font-size:1.3rem;">🔬</div><b>Diagnosis</b><div style="font-size:0.72rem;opacity:0.9;margin-top:4px;">Differentials + evidence</div>
-    </div>
-    <div style="flex:1;background:#059669;color:white;padding:12px 10px;border-radius:8px;text-align:center;">
-      <div style="font-size:1.3rem;">💊</div><b>Treatment</b><div style="font-size:0.72rem;opacity:0.9;margin-top:4px;">Medications + plan</div>
-    </div>
-  </div>
-  <div style="text-align:center;font-size:1.4rem;color:#64748b;">↓</div>
-  <div style="display:flex;justify-content:center;">
-    <div style="background:#1e3a5f;color:white;padding:10px 28px;border-radius:8px;font-weight:600;">✅ Clinical Report</div>
-  </div>
-</div>
-"""
+
 
 TITLE_HTML = """
 <div style="text-align:center;padding:20px 0 6px 0;">
@@ -647,35 +618,56 @@ def get_system_status() -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 CHAT_SYSTEM = (
-    "You are a Senior Attending Physician in a clinical decision support platform.\n"
-    "Answer concisely, clinically, evidence-based. Plain text ONLY.\n\n"
+    "You are a clinical decision support assistant.\n"
+    "Answer concisely and clinically. Plain text ONLY.\n\n"
     "{patients_context}"
     "{analysis_context}\n"
     "RULES:\n"
-    "- Profile questions: answer freely from patient profiles.\n"
-    "- Clinical questions (diagnosis, treatment, urgency): ONLY answer if PROCESSED ANALYSIS exists "
-    "AND is for the SAME patient. Otherwise say: 'Load the patient and click Load & Analyse first.'\n"
-    "- Never invent diagnosis or treatment not in the analysis.\n"
+    "- Answer only from the PROCESSED ANALYSIS above. Do not invent or assume.\n"
+    "- For general questions (how can you help, patient count, system info) answer freely.\n"
+    "- For any clinical question, use only the PROCESSED ANALYSIS provided.\n"
+)
+
+# Clinical keywords — if any appear in the message and no analysis exists,
+# short-circuit in Python before the LLM is even called.
+_CLINICAL_KEYWORDS = (
+    "diagnos", "treatment", "triage", "symptom", "vital", "medication", "drug",
+    "allerg", "medical history", "prognos", "urgent", "condition", "disease",
+    "clinical report", "finding", "prescription", "dose", "interact",
+    "lab result", "scan", "xray", "x-ray", "ecg", "ekg",
+    "blood pressure", "heart rate", "chest pain", "fever",
+    "tell me about this patient", "what is wrong with",
+    "full report", "triage report", "diagnosis report", "treatment plan",
+    "analyse", "analyze",
+)
+
+# General questions that must always pass through regardless of keywords
+_GENERAL_PATTERNS = (
+    "how many", "how can you", "what can you", "what is this", "who are you",
+    "list patient", "list all", "show patient", "show all",
 )
 
 def build_chat_system(patient_state, all_patients):
+    has_analysis = bool(
+        patient_state
+        and patient_state.get("triage_output")
+        and patient_state.get("analyzed_name")
+    )
+
     if all_patients:
-        lines = [f"ALL PATIENTS ({len(all_patients)} total):\n"]
+        # Only expose name/age/gender/registered — never clinical data without analysis
+        lines = [f"PATIENT LIST ({len(all_patients)} total) — names/demographics only:\n"]
         for i, p in enumerate(all_patients, 1):
             lines.append(
-                f"  {i}. {p.get('name','?')}, Age {p.get('age','?')}, {p.get('gender','?')}\n"
-                f"     Symptoms: {p.get('symptoms','')}\n"
-                f"     Vitals: {p.get('vitals','')}\n"
-                f"     History: {p.get('history','')}\n"
-                f"     Meds: {p.get('medications','')}\n"
-                f"     Registered: {p.get('created_at','')}\n"
+                f"  {i}. {p.get('name','?')}, Age {p.get('age','?')}, "
+                f"{p.get('gender','?')}, Registered: {p.get('created_at','')}\n"
             )
         patients_ctx = "\n".join(lines) + "\n\n"
     else:
         patients_ctx = "No patients in database.\n\n"
 
-    analyzed_name = (patient_state or {}).get("analyzed_name", "")
-    if patient_state and patient_state.get("triage_output") and analyzed_name:
+    if has_analysis:
+        analyzed_name = patient_state.get("analyzed_name", "")
         analysis_ctx = (
             f"PROCESSED ANALYSIS — Patient: {analyzed_name.upper()}\n\n"
             f"TRIAGE:\n{patient_state.get('triage_output','')}\n\n"
@@ -692,6 +684,24 @@ def chat_respond(message, history, patient_state, all_patients):
         history = []
     if not message or not message.strip():
         return history, ""
+
+    # Python-level guard: if no processed analysis and message is clinical → short-circuit
+    has_analysis = bool(
+        patient_state
+        and patient_state.get("triage_output")
+        and patient_state.get("analyzed_name")
+    )
+    if not has_analysis:
+        msg_lower = message.lower()
+        is_general = any(p in msg_lower for p in _GENERAL_PATTERNS)
+        is_clinical = not is_general and any(kw in msg_lower for kw in _CLINICAL_KEYWORDS)
+        if is_clinical:
+            answer = "Please select a patient and click Load & Analyse first."
+            return history + [
+                {"role": "user",      "content": message},
+                {"role": "assistant", "content": answer},
+            ], ""
+
     system_prompt = build_chat_system(patient_state, all_patients or [])
     def flatten_content(content):
         # If content is a dict or list, extract 'text' or 'content' recursively
@@ -1122,43 +1132,41 @@ def _chat_copy_all_js() -> str:
 # Build UI
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def build_ui() -> gr.Blocks:
     init_db()
     startup_rows    = db_load_all()
     startup_choices = [f"{r['id']}. {r['name']} (age {r['age']})" for r in startup_rows]
     print(f"[DB] Loaded {len(startup_rows)} patients")
 
-    TB = dict(size="sm", variant="secondary")
+
 
     with gr.Blocks(title="Healthcare AI") as demo:
 
         gr.HTML(TITLE_HTML)
 
-        # ── Status bar ────────────────────────────────────────────────────────
+
+        # ── Status bar with Refresh and Workflow Toggle ───────────────────────
         with gr.Row():
             with gr.Column(scale=5):
                 status_md = gr.Markdown(get_system_status())
-            refresh_btn  = gr.Button("🔄 Refresh",      size="sm", scale=0)
-            workflow_btn = gr.Button("🔀 Show Workflow", size="sm", scale=0)
+            refresh_btn = gr.Button("🔄 Refresh", size="sm", scale=0)
+            workflow_toggle_btn = gr.Button("🧩 Show Workflow", size="sm", variant="secondary")
 
         refresh_btn.click(fn=get_system_status, outputs=status_md)
-        workflow_html    = gr.HTML(visible=False)
-        workflow_visible = gr.State(value=False)
-
-        def _toggle(is_vis):
-            nv = not is_vis
-            return nv, \
-                   gr.update(value="🔀 Hide Workflow" if nv else "🔀 Show Workflow"), \
-                   gr.update(visible=nv, value=WORKFLOW_HTML)
-
-        workflow_btn.click(fn=_toggle, inputs=[workflow_visible],
-                           outputs=[workflow_visible, workflow_btn, workflow_html], queue=False)
 
         patient_state = gr.State(value={})
         all_patients  = gr.State(value=startup_rows)
 
         # State for delete-all confirmation flow
         delete_all_confirm = gr.State(value=False)
+
+
+
+
+        # ── Workflow Diagram (hidden by default) ───────────────────────────
+        workflow_visible = gr.State(value=False)
+        workflow_html = gr.HTML("", visible=False, elem_id="hcai-workflow")
 
         with gr.Row(equal_height=False):
 
@@ -1221,45 +1229,78 @@ def build_ui() -> gr.Blocks:
                     np_save_btn = gr.Button("💾 Save Patient", variant="primary")
                     np_status   = gr.Markdown("")
 
+
             # ── RIGHT PANEL ───────────────────────────────────────────────────
             with gr.Column(scale=2):
                 gr.Markdown("### 📄 Clinical Reports")
 
                 with gr.Tab("🚨 Triage"):
                     with gr.Row():
-                        triage_tts_btn  = gr.Button("🔊 Read Aloud", **TB)
-                        triage_copy_btn = gr.Button("📋 Copy",       **TB)
+                        triage_tts_btn  = gr.Button("🔊 Read Aloud", size="sm", variant="secondary")
+                        triage_copy_btn = gr.Button("📋 Copy", size="sm", variant="secondary")
                     triage_out = gr.HTML(value=make_report_html(""), elem_id="hcai-triage")
 
                 with gr.Tab("🔬 Diagnosis"):
                     with gr.Row():
-                        diag_tts_btn  = gr.Button("🔊 Read Aloud", **TB)
-                        diag_copy_btn = gr.Button("📋 Copy",       **TB)
+                        diag_tts_btn  = gr.Button("🔊 Read Aloud", size="sm", variant="secondary")
+                        diag_copy_btn = gr.Button("📋 Copy", size="sm", variant="secondary")
                     diagnosis_out = gr.HTML(value=make_report_html(""), elem_id="hcai-diag")
 
                 with gr.Tab("💊 Treatment"):
                     with gr.Row():
-                        treat_tts_btn  = gr.Button("🔊 Read Aloud", **TB)
-                        treat_copy_btn = gr.Button("📋 Copy",       **TB)
+                        treat_tts_btn  = gr.Button("🔊 Read Aloud", size="sm", variant="secondary")
+                        treat_copy_btn = gr.Button("📋 Copy", size="sm", variant="secondary")
                     treatment_out = gr.HTML(value=make_report_html(""), elem_id="hcai-treat")
 
                 with gr.Tab("📋 Full Report"):
                     with gr.Row():
-                        full_tts_btn  = gr.Button("🔊 Read Aloud", **TB)
-                        full_copy_btn = gr.Button("📋 Copy",       **TB)
+                        full_tts_btn  = gr.Button("🔊 Read Aloud", size="sm", variant="secondary")
+                        full_copy_btn = gr.Button("📋 Copy", size="sm", variant="secondary")
                     final_out = gr.HTML(value=make_report_html("", full=True), elem_id="hcai-full")
+        # ── Workflow Toggle Logic ───────────────────────────────────────────
+
+        def toggle_workflow_diagram(current_visible):
+            if current_visible:
+                return False, gr.update(visible=False), gr.update(value="🧩 Show Workflow")
+            try:
+                import base64
+                from pipeline import build_graph
+                png = build_graph().get_graph().draw_mermaid_png()
+                b64 = base64.b64encode(png).decode()
+                html = (
+                    '<div style="background:#f8fafc;border:1px solid #e2e8f0;'
+                    'border-radius:12px;padding:16px;margin:4px 0;'
+                    'display:flex;flex-direction:column;align-items:center;'
+                    'overflow-x:auto;">'
+                    '<h3 style="color:#1e3a5f;margin:0 0 12px 0;font-size:0.95rem;">'
+                    '🔀 LangGraph Multi-Agent Pipeline</h3>'
+                    f'<img src="data:image/png;base64,{b64}" '
+                    'style="width:100%;max-width:100%;height:auto;'
+                    'object-fit:contain;border-radius:8px;'
+                    'box-shadow:0 2px 8px rgba(0,0,0,0.1);">'
+                    '</div>'
+                )
+            except Exception as e:
+                html = f'<i style="color:red;">Could not render workflow: {e}</i>'
+            return True, gr.update(value=html, visible=True), gr.update(value="🙈 Hide Workflow")
+
+        workflow_toggle_btn.click(
+            fn=toggle_workflow_diagram,
+            inputs=[workflow_visible],
+            outputs=[workflow_visible, workflow_html, workflow_toggle_btn],
+        )
 
         # ── CHAT ──────────────────────────────────────────────────────────────
         gr.Markdown("---\n### 💬 Clinical Chat")
         gr.Markdown("<small style='color:#6b7280'>Ask about any patient. Load & Analyse first for full clinical answers.</small>")
 
         with gr.Row():
-            chat_tts_btn       = gr.Button("🔊 Read Last", **TB)
-            chat_copy_last_btn = gr.Button("📋 Copy Last", **TB)
-            chat_copy_all_btn  = gr.Button("📋 Copy All",  **TB)
+            chat_tts_btn       = gr.Button("🔊 Read Last", size="sm", variant="secondary")
+            chat_copy_last_btn = gr.Button("📋 Copy Last", size="sm", variant="secondary")
+            chat_copy_all_btn  = gr.Button("📋 Copy All",  size="sm", variant="secondary")
 
         try:
-            chatbot = gr.Chatbot(label="Clinical Chat", height=380, type="messages", elem_id="hcai-chatbot")
+            chatbot = gr.Chatbot(label="Clinical Chat", height=380, elem_id="hcai-chatbot")
         except TypeError:
             chatbot = gr.Chatbot(label="Clinical Chat", height=380, elem_id="hcai-chatbot")
 

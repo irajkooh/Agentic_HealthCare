@@ -132,9 +132,15 @@ async def analyze_patient(request: PatientRequest):
     try:
         result = run_pipeline(request.model_dump())
     except RuntimeError as e:
+        import traceback
+        tb = traceback.format_exc()
+        print(f"[PIPELINE RuntimeError]\n{tb}", flush=True)
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Pipeline error: {e}")
+        import traceback
+        tb = traceback.format_exc()
+        print(f"[PIPELINE ERROR]\n{tb}", flush=True)
+        raise HTTPException(status_code=500, detail=f"Pipeline error: {type(e).__name__}: {e}")
 
     return {
         "success":          True,

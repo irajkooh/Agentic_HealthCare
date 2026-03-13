@@ -73,20 +73,34 @@ def _invoke_ollama(prompt: str, system: str, temperature: float, max_tokens: int
 def _invoke_hf(prompt: str, system: str, temperature: float, max_tokens: int) -> str:
     from huggingface_hub import InferenceClient
     if not HF_TOKEN:
-        raise RuntimeError("HF_TOKEN not set. Add it as a Space secret.")
-    # Remove provider argument, use token only
+        raise RuntimeError(
+            "HF_TOKEN is not set. Go to Space Settings → Variables and Secrets "
+            "and add HF_TOKEN as a secret with your HuggingFace token."
+        )
     client = InferenceClient(token=HF_TOKEN)
     messages = []
     if system:
+        # Trim system prompt to avoid token limit errors on HF Inference API
+        # Llama-3.1-8B context = 8k tokens; keep system under ~3000 chars
+        if len(system) > 3000:
+            system = system[:3000] + "\n...[truncated]"
         messages.append({"role": "system", "content": system})
+    # Trim prompt too
+    if len(prompt) > 4000:
+        prompt = prompt[:4000] + "\n...[truncated]"
     messages.append({"role": "user", "content": prompt})
-    response = client.chat.completions.create(
-        model=HF_MODEL,
-        messages=messages,
-        max_tokens=max_tokens,
-        temperature=temperature,
-    )
-    return response.choices[0].message.content
+    print(f"[HF] Calling {HF_MODEL}, system={len(system)}chars, prompt={len(prompt)}chars", flush=True)
+    try:
+        response = client.chat.completions.create(
+            model=HF_MODEL,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"[HF ERROR] {type(e).__name__}: {e}", flush=True)
+        raise
 
 
 def _sanitize(text: str) -> str:

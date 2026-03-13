@@ -722,9 +722,14 @@ def chat_respond(message, history, patient_state, all_patients):
             return " ".join(flatten_content(item) for item in content)
         return str(content)
 
-    # Build clean history — skip redirect messages and stale pre-analysis turns.
-    # Redirect messages confuse the LLM into thinking the topic changed.
+    # Build clean history:
+    # 1. Drop redirect messages (and the user turn that triggered them)
+    # 2. Compact old turns into a summary when history grows large,
+    #    to avoid exceeding the model context window.
     _REDIRECT = "Please select a patient and click Load & Analyse first."
+    _MAX_RECENT = 6   # keep last 6 turns (3 exchanges) verbatim
+    _MAX_CHARS  = 6000  # compact if total history chars exceed this
+
     clean_history = []
     for msg in history:
         if not isinstance(msg, dict):
@@ -732,13 +737,24 @@ def chat_respond(message, history, patient_state, all_patients):
         if msg.get("role") not in ("user", "assistant"):
             continue
         txt = flatten_content(msg.get("content", ""))
-        # Drop redirect assistant messages and the user turn that triggered them
         if txt.strip() == _REDIRECT:
-            # Also drop the preceding user message (the one that got redirected)
             if clean_history and clean_history[-1]["role"] == "user":
                 clean_history.pop()
             continue
         clean_history.append({"role": msg["role"], "content": txt})
+
+    # Compact if too long — summarise older turns into a single context block
+    total_chars = sum(len(m["content"]) for m in clean_history)
+    if len(clean_history) > _MAX_RECENT and total_chars > _MAX_CHARS:
+        older   = clean_history[:-_MAX_RECENT]
+        recent  = clean_history[-_MAX_RECENT:]
+        summary_lines = []
+        for m in older:
+            role = "Physician" if m["role"] == "user" else "Assistant"
+            # Truncate each old turn to 200 chars to keep summary compact
+            summary_lines.append(f"{role}: {m['content'][:200]}")
+        summary = "Earlier conversation summary:\n" + "\n".join(summary_lines)
+        clean_history = [{"role": "assistant", "content": summary}] + recent
 
     llm_messages = [{"role": "system", "content": system_prompt}]
     for msg in clean_history:
@@ -875,7 +891,7 @@ SAMPLE_QUESTIONS = [
     "How can you help me?",
     "Tell me about this patient.",
     "What doctor this patient should see?",
-    "Give me the address of doctors the patient can refer in Chicago.",
+    "Recommend few high profile doctors and their contacts to see in Chicago.",
     "Tell me about the patient's triage report.",
     "Tell me about the patient's diagnosis report.",
     "Tell me about the patient's treatment report.",

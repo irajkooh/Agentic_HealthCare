@@ -879,7 +879,7 @@ SAMPLE_QUESTIONS = [
     "Tell me about the patient's triage report.",
     "Tell me about the patient's diagnosis report.",
     "Tell me about the patient's treatment report.",
-    "What are the side effects of the patient's treatement?",
+    "What are the side effects of the patient's treatemnt?",
     "Summarize the patient's full report in max 10 bullet points.",
     "What is the main clinical concern of this patient?",
     "List the required Lab works for this patient, and why?",

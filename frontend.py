@@ -548,7 +548,7 @@ def _render_text(text: str) -> str:
 
 def make_report_html(text: str, full: bool = False) -> str:
     """Wrap _render_text in a scrollable report container."""
-    height = '300px' if full else '260px'
+    height = '260px' if full else '220px'
     wrap = (
         f'width:100%;height:{height};overflow-y:auto;overflow-x:hidden;'
         'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;'
@@ -1214,14 +1214,42 @@ def build_ui() -> gr.Blocks:
 
 
     tab_css = """
-        /* Patients tab — teal/navy */
+        /* ── Fit entire app to viewport, no page scroll ── */
+        html, body { height: 100%; overflow: hidden; margin: 0; padding: 0; }
+        .gradio-container {
+            height: 100vh !important;
+            max-height: 100vh !important;
+            overflow: hidden !important;
+            padding: 4px 8px !important;
+        }
+        /* Tab content scrolls internally */
+        .tabitem { overflow-y: auto !important; max-height: calc(100vh - 110px) !important; }
+
+        /* Compact Gradio default spacing */
+        .gap { gap: 4px !important; }
+        .form { gap: 4px !important; }
+        .block { padding: 4px !important; }
+        footer { display: none !important; }
+
+        /* Patients tab — navy */
         button[id$="-0"] { background: #1e3a5f !important; color: white !important;
                            border-radius: 8px 8px 0 0 !important; font-weight: 600 !important; }
         button[id$="-0"]:not(.selected) { background: #e8edf5 !important; color: #1e3a5f !important; }
-        /* Chat tab — teal green */
+        /* Chat tab — green */
         button[id$="-1"] { background: #059669 !important; color: white !important;
                            border-radius: 8px 8px 0 0 !important; font-weight: 600 !important; }
         button[id$="-1"]:not(.selected) { background: #d1fae5 !important; color: #065f46 !important; }
+        /* Sample question buttons — one line each, scroll if overflow */
+        .sq-btn button {
+            width: 100% !important;
+            text-align: left !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            display: block !important;
+            margin-bottom: 3px !important;
+            font-size: 0.78rem !important;
+        }
     """
     with gr.Blocks(title="Healthcare AI", css=tab_css) as demo:
 
@@ -1300,7 +1328,7 @@ def build_ui() -> gr.Blocks:
                         gr.Markdown("#### 👤 Patient Information")
                         created_at_box = gr.Textbox(
                             label="🗓️ Date Registered",
-                            value="Select a patient and click Load & Analyse",
+                            value="",
                             interactive=False, lines=1,
                         )
                         with gr.Row():
@@ -1315,7 +1343,7 @@ def build_ui() -> gr.Blocks:
                         with gr.Row():
                             meds_in      = gr.Textbox(label="💊 Medications", placeholder="Drug, dose...", lines=1, scale=1)
                             allergies_in = gr.Textbox(label="⚠️ Allergies",   placeholder="Allergies",     lines=1, scale=1)
-                        pipeline_status = gr.Markdown("*Select a patient and click Load & Analyse.*")
+                        pipeline_status = gr.Markdown("")
 
                     # RIGHT: Clinical Reports (compact)
                     with gr.Column(scale=2):
@@ -1356,35 +1384,45 @@ def build_ui() -> gr.Blocks:
                 gr.Markdown("### 💬 Clinical Chat")
                 gr.Markdown("<small style='color:#6b7280'>Load & Analyse a patient first for full clinical answers.</small>")
 
-                try:
-                    chatbot = gr.Chatbot(label="Clinical Chat", height=280, elem_id="hcai-chatbot")
-                except TypeError:
-                    chatbot = gr.Chatbot(label="Clinical Chat", height=360, elem_id="hcai-chatbot")
+                # Chat + Sample Questions side by side
+                with gr.Row(equal_height=False):
 
-                # Chat toolbar directly under chatbot
-                with gr.Row():
-                    chat_tts_btn       = gr.Button("🔊 Read Last", size="sm", variant="secondary")
-                    chat_copy_last_btn = gr.Button("📋 Copy Last", size="sm", variant="secondary")
-                    chat_copy_all_btn  = gr.Button("📋 Copy All",  size="sm", variant="secondary")
+                    # ── LEFT: chat window (narrower) ──────────────────────────
+                    with gr.Column(scale=3):
+                        try:
+                            chatbot = gr.Chatbot(label="Clinical Chat", height=260, elem_id="hcai-chatbot")
+                        except TypeError:
+                            chatbot = gr.Chatbot(label="Clinical Chat", height=260, elem_id="hcai-chatbot")
 
-                chat_input = gr.Textbox(
-                    placeholder="Type a question and press Enter or click Send...",
-                    label="", lines=1, show_label=False,
-                )
-                with gr.Row():
-                    chat_btn  = gr.Button("Send 💬",  variant="primary",   scale=1)
-                    clear_btn = gr.Button("Clear 🗑️", variant="secondary", scale=1)
+                        # Toolbar under chatbot
+                        with gr.Row():
+                            chat_tts_btn       = gr.Button("🔊 Read Last", size="sm", variant="secondary")
+                            chat_copy_last_btn = gr.Button("📋 Copy Last", size="sm", variant="secondary")
+                            chat_copy_all_btn  = gr.Button("📋 Copy All",  size="sm", variant="secondary")
 
-                gr.HTML('<div style="margin:12px 0 6px;font-size:0.82rem;color:#374151;font-weight:600;">'
-                        '💡 Click a question to ask instantly:</div>')
-                sq_btns = []
-                for row_start in range(0, len(SAMPLE_QUESTIONS), 3):
-                    with gr.Row():
-                        for q in SAMPLE_QUESTIONS[row_start:row_start + 3]:
-                            b = gr.Button(q, size="sm", variant="secondary")
+                        chat_input = gr.Textbox(
+                            placeholder="Type a question and press Enter or click Send...",
+                            label="", lines=1, show_label=False, elem_id="hcai-chat-input",
+                        )
+                        with gr.Row():
+                            chat_btn  = gr.Button("Send 💬",  variant="primary",   scale=1)
+                            clear_btn = gr.Button("Clear 🗑️", variant="secondary", scale=1)
+
+                    # ── RIGHT: sample questions (each on one line, scrollable) ─
+                    with gr.Column(scale=2, min_width=220):
+                        gr.HTML(
+                            '<div style="font-size:0.9rem;font-weight:700;color:#1e3a5f;'
+                            'padding:4px 0 8px 0;">Sample Questions</div>'
+                        )
+                        sq_btns = []
+                        for q in SAMPLE_QUESTIONS:
+                            b = gr.Button(
+                                q, size="sm", variant="secondary",
+                                elem_classes=["sq-btn"],
+                            )
                             sq_btns.append((b, q))
 
-                gr.HTML("<div id='hcai-footer' style='text-align:center;color:#9ca3af;font-size:11px;padding:12px'>"
+                gr.HTML("<div id='hcai-footer' style='text-align:center;color:#9ca3af;font-size:11px;padding:8px'>"
                         "Healthcare AI | LangGraph + FastAPI + Gradio | Not a replacement for clinical judgment</div>")
 
         # ── Workflow Toggle Logic ─────────────────────────────────────────────
@@ -1424,7 +1462,7 @@ def build_ui() -> gr.Blocks:
         def load_and_analyse(selection, rows):
             EMPTY = [
                 "", None, None, "", "", "", "", "",
-                "Select a patient and click Load & Analyse",
+                "",
                 "⚠️ No patient selected.",
                 make_report_html(""), make_report_html(""),
                 make_report_html(""), make_report_html("", full=True),
@@ -1530,6 +1568,26 @@ def build_ui() -> gr.Blocks:
                      triage_out, diagnosis_out, treatment_out, final_out,
                      patient_state, chatbot],
             show_progress="full",
+        )
+        # After loading, switch to Chat tab and focus the question input
+        load_btn.click(
+            fn=None,
+            js="""() => {
+                setTimeout(function() {
+                    // Switch to Chat tab (tab index 1)
+                    var tabs = document.querySelectorAll('.tab-nav button');
+                    if (tabs.length > 1) tabs[1].click();
+                    // Focus the chat input
+                    setTimeout(function() {
+                        var inp = document.getElementById('hcai-chat-input');
+                        if (inp) {
+                            var ta = inp.querySelector('textarea') || inp.querySelector('input');
+                            if (ta) { ta.focus(); ta.scrollIntoView({block:'center'}); }
+                        }
+                    }, 400);
+                }, 200);
+                return [];
+            }"""
         )
         delete_btn.click(
             fn=delete_patient,

@@ -396,7 +396,9 @@ def db_add_patient(name, age, gender, symptoms, vitals, history, medications, al
         (name, int(age) if age else 0, gender, symptoms, vitals, history, medications, allergies,
          datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     )
-    con.commit(); con.close()
+    con.commit()
+    _db_reindex(con)
+    con.close()
 
 def _db_reindex(con):
     """Renumber all patient IDs to 1..N in current order, reset AUTOINCREMENT."""
@@ -418,6 +420,7 @@ def db_delete_patient(pid):
     con.execute("DELETE FROM patients WHERE id=?", (pid,))
     con.commit()
     _db_reindex(con)
+    con.close()
     con.close()
 
 def db_delete_all():
@@ -546,7 +549,7 @@ def _render_text(text: str) -> str:
 
 def make_report_html(text: str, full: bool = False) -> str:
     """Wrap _render_text in a scrollable report container."""
-    height = '260px' if full else '220px'
+    height = '900px' if full else '700px'
     wrap = (
         f'width:100%;height:{height};overflow-y:auto;overflow-x:hidden;'
         'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;'
@@ -620,7 +623,10 @@ def get_system_status() -> str:
 
 CHAT_SYSTEM_WITH_ANALYSIS = (
     "You are a clinical decision support assistant.\n"
-    "Answer concisely and clinically. Plain text ONLY.\n\n"
+    "Answer concisely and clinically.\n"
+    "Format all answers and clinical reports in readable, visually appealing forms.\n"
+    "Use clear section headings, bullet points, concise paragraphs, and consistent formatting.\n"
+    "Make reports easy to copy and review.\n"
     "CURRENT PATIENT:\n"
     "  Name       : {analyzed_name}\n"
     "  Age        : {analyzed_age}\n"
@@ -631,7 +637,7 @@ CHAT_SYSTEM_WITH_ANALYSIS = (
     "  Medications: {analyzed_medications}\n"
     "  Allergies  : {analyzed_allergies}\n\n"
     "{analysis_context}\n"
-    "Use the CURRENT PATIENT details and PROCESSED ANALYSIS above. "
+    "Use the CURRENT PATIENT details and PROCESSED ANALYSIS above.\n"
     "Never say a field is Unknown if it is listed above.\n"
 )
 
@@ -742,8 +748,7 @@ def chat_respond(message, history, patient_state, all_patients):
     # 2. Compact old turns into a summary when history grows large,
     #    to avoid exceeding the model context window.
     _REDIRECT = "Please select a patient and click Load & Analyse first."
-    _MAX_RECENT = 6   # keep last 6 turns (3 exchanges) verbatim
-    _MAX_CHARS  = 6000  # compact if total history chars exceed this
+    _MAX_RECENT = 8   # keep last 8 turns (4 exchanges) verbatim
 
     clean_history = []
     for msg in history:
@@ -758,15 +763,13 @@ def chat_respond(message, history, patient_state, all_patients):
             continue
         clean_history.append({"role": msg["role"], "content": txt})
 
-    # Compact if too long — summarise older turns into a single context block
-    total_chars = sum(len(m["content"]) for m in clean_history)
-    if len(clean_history) > _MAX_RECENT and total_chars > _MAX_CHARS:
+    # Summarize context after every 4 answers (8 turns)
+    if len(clean_history) > _MAX_RECENT:
         older   = clean_history[:-_MAX_RECENT]
         recent  = clean_history[-_MAX_RECENT:]
         summary_lines = []
         for m in older:
             role = "Physician" if m["role"] == "user" else "Assistant"
-            # Truncate each old turn to 200 chars to keep summary compact
             summary_lines.append(f"{role}: {m['content'][:200]}")
         summary = "Earlier conversation summary:\n" + "\n".join(summary_lines)
         clean_history = [{"role": "assistant", "content": summary}] + recent
@@ -913,7 +916,7 @@ SAMPLE_QUESTIONS = [
     "How can you help me?",
     "Tell me about this patient.",
     "What doctor this patient should see?",
-    "Address of doctors the patient can refer in Chicago.",
+    "Address of doctors the patient can refer in Chicago?",
     "Tell me about the patient's triage report.",
     "Tell me about the patient's diagnosis report.",
     "Tell me about the patient's treatment report.",
@@ -1228,15 +1231,15 @@ def build_ui() -> gr.Blocks:
         button[id$="-1"]:not(.selected) { background: #d1fae5 !important; color: #065f46 !important; }
         /* Status md — no gap */
         #hcai-status-md { margin: 0 !important; padding: 0 !important; }
-        /* Sample question buttons — shrink to fit text, white background */
-        .sq-btn { width: fit-content !important; max-width: 100% !important; }
+        /* Sample question buttons — fixed width, white background */
+        .sq-btn { width: 420px !important; max-width: 100% !important; }
         .sq-btn button {
-            width: fit-content !important;
+            width: 420px !important;
             max-width: 100% !important;
             text-align: left !important;
-            white-space: nowrap !important;
-            overflow: hidden !important;
-            text-overflow: ellipsis !important;
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: initial !important;
             display: inline-block !important;
             margin-bottom: 3px !important;
             font-size: 0.78rem !important;
@@ -1442,13 +1445,13 @@ def build_ui() -> gr.Blocks:
                 b64 = base64.b64encode(png).decode()
                 html = (
                     '<div style="background:#f8fafc;border:1px solid #e2e8f0;'
-                    'border-radius:12px;padding:16px;margin:4px 0;'
+                    'border-radius:12px;padding:6px;margin:4px 0;'
                     'display:flex;flex-direction:column;align-items:center;'
-                    'overflow-x:auto;">'
-                    '<h3 style="color:#1e3a5f;margin:0 0 12px 0;font-size:0.95rem;">'
+                    'overflow-x:auto;max-width:320px;">'
+                    '<h3 style="color:#1e3a5f;margin:0 0 8px 0;font-size:0.82rem;">'
                     '🔀 LangGraph Multi-Agent Pipeline</h3>'
                     f'<img src="data:image/png;base64,{b64}" '
-                    'style="width:100%;max-width:100%;height:auto;'
+                    'style="width:100%;max-width:300px;height:auto;'
                     'object-fit:contain;border-radius:8px;'
                     'box-shadow:0 2px 8px rgba(0,0,0,0.1);">'
                     '</div>'

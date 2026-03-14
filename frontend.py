@@ -435,10 +435,10 @@ _db_lock = Lock()
 
 
 TITLE_HTML = """
-<div style="text-align:center;padding:20px 0 6px 0;">
-  <h1 style="font-size:1.9rem;font-weight:700;color:#1e3a5f;margin:0;">🏥 Healthcare AI Clinical Decision Support</h1>
-  <p style="color:#6b7280;margin-top:6px;font-size:0.9rem;">Multi-Agent: Triage → Diagnosis → Treatment | LangGraph + Ollama / HF Inference API</p>
-  <p style="color:#ef4444;font-size:0.78rem;margin-top:4px;">⚠ For clinical decision support only. Not a replacement for clinical judgment.</p>
+<div style="text-align:center;padding:8px 0 4px 0;">
+  <h1 style="font-size:1.4rem;font-weight:700;color:#1e3a5f;margin:0;">🏥 Healthcare AI Clinical Decision Support</h1>
+  <p style="color:#6b7280;margin-top:2px;font-size:0.78rem;">Multi-Agent: Triage → Diagnosis → Treatment | LangGraph + Ollama / HF Inference API</p>
+  <p style="color:#ef4444;font-size:0.72rem;margin-top:1px;">⚠ For clinical decision support only. Not a replacement for clinical judgment.</p>
 </div>
 """
 
@@ -548,7 +548,7 @@ def _render_text(text: str) -> str:
 
 def make_report_html(text: str, full: bool = False) -> str:
     """Wrap _render_text in a scrollable report container."""
-    height = '620px' if full else '500px'
+    height = '300px' if full else '260px'
     wrap = (
         f'width:100%;height:{height};overflow-y:auto;overflow-x:hidden;'
         'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;'
@@ -604,9 +604,13 @@ def get_system_status() -> str:
             return "🟡 Backend: Responding but unhealthy"
         h = resp.json()
         device = h.get("device_info", {}).get("device", "?").upper()
-        llm = h.get("llm_backend") or h.get("ollama", {})
+        llm    = h.get("llm_backend") or h.get("ollama", {})
+        backend = llm.get("backend", "?")
+        model   = llm.get("model", "")
+        # Show backend name + model name for clarity
+        llm_str = f"{backend} ({model})" if model else backend
         if h.get("status") == "healthy":
-            return f"🟢 Backend: Online | Device: {device} | LLM: {llm.get('backend','?')}"
+            return f"🟢 Backend: Online | Device: {device} | LLM: {llm_str}"
         return "🟡 Backend: Degraded"
     except requests.exceptions.ConnectionError:
         return "🔴 Backend: Offline — make sure app.py is running"
@@ -618,12 +622,20 @@ def get_system_status() -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 CHAT_SYSTEM_WITH_ANALYSIS = (
-    "You are a clinical decision support assistant. "
-    "The patient currently loaded is: {analyzed_name}.\n"
+    "You are a clinical decision support assistant.\n"
     "Answer concisely and clinically. Plain text ONLY.\n\n"
+    "CURRENT PATIENT:\n"
+    "  Name       : {analyzed_name}\n"
+    "  Age        : {analyzed_age}\n"
+    "  Gender     : {analyzed_gender}\n"
+    "  Symptoms   : {analyzed_symptoms}\n"
+    "  Vitals     : {analyzed_vitals}\n"
+    "  History    : {analyzed_history}\n"
+    "  Medications: {analyzed_medications}\n"
+    "  Allergies  : {analyzed_allergies}\n\n"
     "{analysis_context}\n"
-    "Use the PROCESSED ANALYSIS above to answer all questions about this patient. "
-    "Do not ask for the patient name — it is already provided above.\n"
+    "Use the CURRENT PATIENT details and PROCESSED ANALYSIS above. "
+    "Never say a field is Unknown if it is listed above.\n"
 )
 
 CHAT_SYSTEM_NO_ANALYSIS = (
@@ -673,9 +685,15 @@ def build_chat_system(patient_state, all_patients):
             f"TREATMENT:\n{patient_state.get('treatment_output','')}\n"
         )
         return CHAT_SYSTEM_WITH_ANALYSIS.format(
-            analyzed_name=analyzed_name,
-            analysis_ctx=analysis_ctx,
-            analysis_context=analysis_ctx,
+            analyzed_name       = analyzed_name,
+            analyzed_age        = patient_state.get("analyzed_age",        "Unknown"),
+            analyzed_gender     = patient_state.get("analyzed_gender",     "Unknown"),
+            analyzed_symptoms   = patient_state.get("analyzed_symptoms",   ""),
+            analyzed_vitals     = patient_state.get("analyzed_vitals",     ""),
+            analyzed_history    = patient_state.get("analyzed_history",    ""),
+            analyzed_medications= patient_state.get("analyzed_medications",""),
+            analyzed_allergies  = patient_state.get("analyzed_allergies",  ""),
+            analysis_context    = analysis_ctx,
         )
     else:
         if all_patients:
@@ -834,6 +852,13 @@ def run_analysis(name, age, gender, symptoms, vitals, history, medications, alle
         done = " → ".join(f"✅ {a.capitalize()}" for a in data.get("agents_completed", []))
         state = {
             "analyzed_name":    name or "Anonymous",
+            "analyzed_age":     age  or "Unknown",
+            "analyzed_gender":  gender or "Unknown",
+            "analyzed_symptoms":    symptoms    or "",
+            "analyzed_vitals":      vitals      or "",
+            "analyzed_history":     history     or "",
+            "analyzed_medications": medications or "",
+            "analyzed_allergies":   allergies   or "",
             "triage_output":    data.get("triage_output",    ""),
             "diagnosis_output": data.get("diagnosis_output", ""),
             "treatment_output": data.get("treatment_output", ""),
@@ -891,7 +916,7 @@ SAMPLE_QUESTIONS = [
     "How can you help me?",
     "Tell me about this patient.",
     "What doctor this patient should see?",
-    "Recommend few high profile doctors and their contacts to see in Chicago.",
+    "Give me the address of doctors the patient can refer in Chicago.",
     "Tell me about the patient's triage report.",
     "Tell me about the patient's diagnosis report.",
     "Tell me about the patient's treatment report.",
@@ -1188,124 +1213,181 @@ def build_ui() -> gr.Blocks:
 
 
 
-    with gr.Blocks(title="Healthcare AI") as demo:
+    tab_css = """
+        /* Patients tab — teal/navy */
+        button[id$="-0"] { background: #1e3a5f !important; color: white !important;
+                           border-radius: 8px 8px 0 0 !important; font-weight: 600 !important; }
+        button[id$="-0"]:not(.selected) { background: #e8edf5 !important; color: #1e3a5f !important; }
+        /* Chat tab — teal green */
+        button[id$="-1"] { background: #059669 !important; color: white !important;
+                           border-radius: 8px 8px 0 0 !important; font-weight: 600 !important; }
+        button[id$="-1"]:not(.selected) { background: #d1fae5 !important; color: #065f46 !important; }
+    """
+    with gr.Blocks(title="Healthcare AI", css=tab_css) as demo:
 
         gr.HTML(TITLE_HTML)
 
 
-        # ── Status bar with Refresh and Workflow Toggle ───────────────────────
-        with gr.Row():
-            with gr.Column(scale=5):
-                status_md = gr.Markdown(get_system_status())
-            refresh_btn = gr.Button("🔄 Refresh", size="sm", scale=0)
-            workflow_toggle_btn = gr.Button("🧩 Show Workflow", size="sm", variant="secondary")
-
-        refresh_btn.click(fn=get_system_status, outputs=status_md)
-
-        patient_state = gr.State(value={})
-        all_patients  = gr.State(value=startup_rows)
-
-        # State for delete-all confirmation flow
+        # ── Shared state ──────────────────────────────────────────────────────
+        patient_state      = gr.State(value={})
+        all_patients       = gr.State(value=startup_rows)
         delete_all_confirm = gr.State(value=False)
+        workflow_visible   = gr.State(value=False)
 
+        # ── Two top-level tabs: Patients | Chat ───────────────────────────────
+        with gr.Tabs(selected=0) as main_tabs:
 
+            # ════════════════════════════════════════════════════════════════
+            # TAB 1 — PATIENTS
+            # ════════════════════════════════════════════════════════════════
+            with gr.TabItem("🏥 Patients", id=0):
 
+                # Status bar
+                with gr.Row():
+                    with gr.Column(scale=5):
+                        status_md = gr.Markdown(get_system_status())
+                    refresh_btn         = gr.Button("🔄 Refresh",      size="sm", scale=0)
+                    workflow_toggle_btn = gr.Button("🧩 Show Workflow", size="sm", variant="secondary", scale=0)
 
-        # ── Workflow Diagram (hidden by default) ───────────────────────────
-        workflow_visible = gr.State(value=False)
-        workflow_html = gr.HTML("", visible=False, elem_id="hcai-workflow")
+                refresh_btn.click(fn=get_system_status, outputs=status_md)
 
-        with gr.Row(equal_height=False):
+                # Workflow diagram (hidden by default, shown below status bar)
+                workflow_html = gr.HTML("", visible=False, elem_id="hcai-workflow")
 
-            # ── LEFT PANEL ────────────────────────────────────────────────────
-            with gr.Column(scale=1):
-                gr.Markdown("### 👤 Patient Information")
+                # ── Patient Database + New Patient side by side ───────────
+                with gr.Row(equal_height=False):
+                    # Left: selector + action buttons
+                    with gr.Column(scale=3):
+                        gr.Markdown("#### 🗄️ Patient Database")
+                        patient_selector = gr.Dropdown(
+                            label="Select Patient",
+                            choices=startup_choices,
+                            value=startup_choices[0] if startup_choices else None,
+                            interactive=True,
+                        )
+                        with gr.Row():
+                            load_btn           = gr.Button("📋 Load & Analyse",   variant="primary", size="sm", scale=3)
+                            delete_btn         = gr.Button("🗑️ Delete",            variant="stop",    size="sm", scale=1)
+                            delete_all_btn     = gr.Button("🗑️ Delete All",        variant="stop",    size="sm", scale=2)
+                        with gr.Row():
+                            delete_all_confirm_btn = gr.Button("⚠️ Confirm Delete All", variant="stop",      size="sm", scale=2, visible=False)
+                            delete_all_cancel_btn  = gr.Button("✕ Cancel",              variant="secondary", size="sm", scale=1, visible=False)
+                        delete_all_status = gr.Markdown("")
 
-                created_at_box = gr.Textbox(
-                    label="🗓️ Date Registered",
-                    value="Select a patient and click Load & Analyse",
-                    interactive=False,
-                    lines=1,
+                    # Right: New Patient form
+                    with gr.Column(scale=2):
+                        with gr.Accordion("➕ New Patient", open=False):
+                            with gr.Row():
+                                np_name   = gr.Textbox(label="Name *", scale=2)
+                                np_age    = gr.Number(label="Age", minimum=0, maximum=150, value=None, scale=1)
+                                np_gender = gr.Dropdown(label="Gender",
+                                                        choices=["Male","Female","Non-binary","Unknown"],
+                                                        value=None, scale=1)
+                            np_symptoms  = gr.Textbox(label="🩺 Symptoms *",     lines=1)
+                            np_vitals    = gr.Textbox(label="📊 Vital Signs",     lines=1)
+                            np_history   = gr.Textbox(label="📋 Medical History", lines=1)
+                            with gr.Row():
+                                np_meds      = gr.Textbox(label="💊 Medications", lines=1, scale=1)
+                                np_allergies = gr.Textbox(label="⚠️ Allergies",   lines=1, scale=1)
+                            np_save_btn = gr.Button("💾 Save Patient", variant="primary")
+                            np_status   = gr.Markdown("")
+
+                # ── Patient info + Reports side by side ───────────────────────
+                with gr.Row(equal_height=False):
+
+                    # LEFT: Patient details (compact)
+                    with gr.Column(scale=1):
+                        gr.Markdown("#### 👤 Patient Information")
+                        created_at_box = gr.Textbox(
+                            label="🗓️ Date Registered",
+                            value="Select a patient and click Load & Analyse",
+                            interactive=False, lines=1,
+                        )
+                        with gr.Row():
+                            name_in   = gr.Textbox(label="Name",   placeholder="Patient name", scale=2)
+                            age_in    = gr.Number( label="Age",    minimum=0, maximum=150, value=None, scale=1)
+                            gender_in = gr.Dropdown(label="Gender",
+                                                    choices=["Male","Female","Non-binary","Unknown"],
+                                                    value=None, scale=1)
+                        symptoms_in = gr.Textbox(label="🩺 Symptoms",        placeholder="Chief complaint...", lines=1)
+                        vitals_in   = gr.Textbox(label="📊 Vital Signs",     placeholder="BP 120/80, HR 72...", lines=1)
+                        history_in  = gr.Textbox(label="📋 Medical History", placeholder="Past diagnoses...", lines=1)
+                        with gr.Row():
+                            meds_in      = gr.Textbox(label="💊 Medications", placeholder="Drug, dose...", lines=1, scale=1)
+                            allergies_in = gr.Textbox(label="⚠️ Allergies",   placeholder="Allergies",     lines=1, scale=1)
+                        pipeline_status = gr.Markdown("*Select a patient and click Load & Analyse.*")
+
+                    # RIGHT: Clinical Reports (compact)
+                    with gr.Column(scale=2):
+                        gr.Markdown("#### 📄 Clinical Reports")
+
+                        with gr.Tab("🚨 Triage"):
+                            with gr.Row():
+                                triage_tts_btn  = gr.Button("🔊 Read Aloud", size="sm", variant="secondary")
+                                triage_copy_btn = gr.Button("📋 Copy",       size="sm", variant="secondary")
+                            triage_out = gr.HTML(value=make_report_html(""), elem_id="hcai-triage")
+
+                        with gr.Tab("🔬 Diagnosis"):
+                            with gr.Row():
+                                diag_tts_btn  = gr.Button("🔊 Read Aloud", size="sm", variant="secondary")
+                                diag_copy_btn = gr.Button("📋 Copy",       size="sm", variant="secondary")
+                            diagnosis_out = gr.HTML(value=make_report_html(""), elem_id="hcai-diag")
+
+                        with gr.Tab("💊 Treatment"):
+                            with gr.Row():
+                                treat_tts_btn  = gr.Button("🔊 Read Aloud", size="sm", variant="secondary")
+                                treat_copy_btn = gr.Button("📋 Copy",       size="sm", variant="secondary")
+                            treatment_out = gr.HTML(value=make_report_html(""), elem_id="hcai-treat")
+
+                        with gr.Tab("📋 Full Report"):
+                            with gr.Row():
+                                full_tts_btn  = gr.Button("🔊 Read Aloud", size="sm", variant="secondary")
+                                full_copy_btn = gr.Button("📋 Copy",       size="sm", variant="secondary")
+                            final_out = gr.HTML(value=make_report_html("", full=True), elem_id="hcai-full")
+
+                gr.HTML("<div id='hcai-footer-p' style='text-align:center;color:#9ca3af;font-size:11px;padding:12px'>"
+                        "Healthcare AI | LangGraph + FastAPI + Gradio | Not a replacement for clinical judgment</div>")
+
+            # ════════════════════════════════════════════════════════════════
+            # TAB 2 — CHAT
+            # ════════════════════════════════════════════════════════════════
+            with gr.TabItem("💬 Chat", id=1):
+
+                gr.Markdown("### 💬 Clinical Chat")
+                gr.Markdown("<small style='color:#6b7280'>Load & Analyse a patient first for full clinical answers.</small>")
+
+                try:
+                    chatbot = gr.Chatbot(label="Clinical Chat", height=280, elem_id="hcai-chatbot")
+                except TypeError:
+                    chatbot = gr.Chatbot(label="Clinical Chat", height=360, elem_id="hcai-chatbot")
+
+                # Chat toolbar directly under chatbot
+                with gr.Row():
+                    chat_tts_btn       = gr.Button("🔊 Read Last", size="sm", variant="secondary")
+                    chat_copy_last_btn = gr.Button("📋 Copy Last", size="sm", variant="secondary")
+                    chat_copy_all_btn  = gr.Button("📋 Copy All",  size="sm", variant="secondary")
+
+                chat_input = gr.Textbox(
+                    placeholder="Type a question and press Enter or click Send...",
+                    label="", lines=1, show_label=False,
                 )
-
                 with gr.Row():
-                    name_in   = gr.Textbox(label="Name", placeholder="Patient name", scale=2)
-                    age_in    = gr.Number(label="Age", minimum=0, maximum=150, value=None, scale=1)
-                    gender_in = gr.Dropdown(label="Gender",
-                                            choices=["Male","Female","Non-binary","Unknown"],
-                                            value=None, scale=1)
-                symptoms_in = gr.Textbox(label="🩺 Symptoms",        placeholder="Chief complaint...", lines=4)
-                vitals_in   = gr.Textbox(label="📊 Vital Signs",     placeholder="BP 120/80, HR 72...", lines=2)
-                history_in  = gr.Textbox(label="📋 Medical History", placeholder="Past diagnoses...", lines=2)
-                with gr.Row():
-                    meds_in      = gr.Textbox(label="💊 Medications", placeholder="Drug, dose...", lines=2, scale=1)
-                    allergies_in = gr.Textbox(label="⚠️ Allergies",   placeholder="Allergies", lines=2, scale=1)
+                    chat_btn  = gr.Button("Send 💬",  variant="primary",   scale=1)
+                    clear_btn = gr.Button("Clear 🗑️", variant="secondary", scale=1)
 
-                pipeline_status = gr.Markdown("*Select a patient and click Load & Analyse.*")
-
-                gr.Markdown("### 🗄️ Patient Database")
-                patient_selector = gr.Dropdown(
-                    label="Select Patient",
-                    choices=startup_choices,
-                    value=startup_choices[0] if startup_choices else None,
-                    interactive=True,
-                )
-                with gr.Row():
-                    load_btn       = gr.Button("📋 Load & Analyse",  variant="primary", size="sm", scale=2)
-                    delete_btn     = gr.Button("🗑️ Delete",           variant="stop",    size="sm", scale=1)
-                # Delete All row — requires confirmation click
-                with gr.Row():
-                    delete_all_btn     = gr.Button("🗑️ Delete All Patients", variant="stop",      size="sm", scale=2)
-                    delete_all_confirm_btn = gr.Button("⚠️ Confirm Delete All", variant="stop",   size="sm", scale=2, visible=False)
-                    delete_all_cancel_btn  = gr.Button("✕ Cancel",            variant="secondary", size="sm", scale=1, visible=False)
-                delete_all_status = gr.Markdown("")
-
-                with gr.Accordion("➕ New Patient", open=False):
+                gr.HTML('<div style="margin:12px 0 6px;font-size:0.82rem;color:#374151;font-weight:600;">'
+                        '💡 Click a question to ask instantly:</div>')
+                sq_btns = []
+                for row_start in range(0, len(SAMPLE_QUESTIONS), 3):
                     with gr.Row():
-                        np_name   = gr.Textbox(label="Name *", scale=2)
-                        np_age    = gr.Number(label="Age", minimum=0, maximum=150, value=None, scale=1)
-                        np_gender = gr.Dropdown(label="Gender",
-                                                choices=["Male","Female","Non-binary","Unknown"],
-                                                value=None, scale=1)
-                    np_symptoms = gr.Textbox(label="🩺 Symptoms *", lines=3)
-                    np_vitals   = gr.Textbox(label="📊 Vital Signs",   lines=1)
-                    np_history  = gr.Textbox(label="📋 Medical History", lines=2)
-                    with gr.Row():
-                        np_meds      = gr.Textbox(label="💊 Medications", lines=2, scale=1)
-                        np_allergies = gr.Textbox(label="⚠️ Allergies",   lines=2, scale=1)
-                    np_save_btn = gr.Button("💾 Save Patient", variant="primary")
-                    np_status   = gr.Markdown("")
+                        for q in SAMPLE_QUESTIONS[row_start:row_start + 3]:
+                            b = gr.Button(q, size="sm", variant="secondary")
+                            sq_btns.append((b, q))
 
+                gr.HTML("<div id='hcai-footer' style='text-align:center;color:#9ca3af;font-size:11px;padding:12px'>"
+                        "Healthcare AI | LangGraph + FastAPI + Gradio | Not a replacement for clinical judgment</div>")
 
-            # ── RIGHT PANEL ───────────────────────────────────────────────────
-            with gr.Column(scale=2):
-                gr.Markdown("### 📄 Clinical Reports")
-
-                with gr.Tab("🚨 Triage"):
-                    with gr.Row():
-                        triage_tts_btn  = gr.Button("🔊 Read Aloud", size="sm", variant="secondary")
-                        triage_copy_btn = gr.Button("📋 Copy", size="sm", variant="secondary")
-                    triage_out = gr.HTML(value=make_report_html(""), elem_id="hcai-triage")
-
-                with gr.Tab("🔬 Diagnosis"):
-                    with gr.Row():
-                        diag_tts_btn  = gr.Button("🔊 Read Aloud", size="sm", variant="secondary")
-                        diag_copy_btn = gr.Button("📋 Copy", size="sm", variant="secondary")
-                    diagnosis_out = gr.HTML(value=make_report_html(""), elem_id="hcai-diag")
-
-                with gr.Tab("💊 Treatment"):
-                    with gr.Row():
-                        treat_tts_btn  = gr.Button("🔊 Read Aloud", size="sm", variant="secondary")
-                        treat_copy_btn = gr.Button("📋 Copy", size="sm", variant="secondary")
-                    treatment_out = gr.HTML(value=make_report_html(""), elem_id="hcai-treat")
-
-                with gr.Tab("📋 Full Report"):
-                    with gr.Row():
-                        full_tts_btn  = gr.Button("🔊 Read Aloud", size="sm", variant="secondary")
-                        full_copy_btn = gr.Button("📋 Copy", size="sm", variant="secondary")
-                    final_out = gr.HTML(value=make_report_html("", full=True), elem_id="hcai-full")
-        # ── Workflow Toggle Logic ───────────────────────────────────────────
-
+        # ── Workflow Toggle Logic ─────────────────────────────────────────────
         def toggle_workflow_diagram(current_visible):
             if current_visible:
                 return False, gr.update(visible=False), gr.update(value="🧩 Show Workflow")
@@ -1336,40 +1418,6 @@ def build_ui() -> gr.Blocks:
             inputs=[workflow_visible],
             outputs=[workflow_visible, workflow_html, workflow_toggle_btn],
         )
-
-        # ── CHAT ──────────────────────────────────────────────────────────────
-        gr.Markdown("---\n### 💬 Clinical Chat")
-        gr.Markdown("<small style='color:#6b7280'>Ask about any patient. Load & Analyse first for full clinical answers.</small>")
-
-        with gr.Row():
-            chat_tts_btn       = gr.Button("🔊 Read Last", size="sm", variant="secondary")
-            chat_copy_last_btn = gr.Button("📋 Copy Last", size="sm", variant="secondary")
-            chat_copy_all_btn  = gr.Button("📋 Copy All",  size="sm", variant="secondary")
-
-        try:
-            chatbot = gr.Chatbot(label="Clinical Chat", height=380, elem_id="hcai-chatbot")
-        except TypeError:
-            chatbot = gr.Chatbot(label="Clinical Chat", height=380, elem_id="hcai-chatbot")
-
-        chat_input = gr.Textbox(
-            placeholder="Type a question and press Enter or click Send...",
-            label="", lines=1, show_label=False,
-        )
-        with gr.Row():
-            chat_btn  = gr.Button("Send 💬",  variant="primary",   scale=1)
-            clear_btn = gr.Button("Clear 🗑️", variant="secondary", scale=1)
-
-        gr.HTML('<div style="margin:12px 0 6px;font-size:0.82rem;color:#374151;font-weight:600;">'
-                '💡 Click a question to ask instantly:</div>')
-        sq_btns = []
-        for row_start in range(0, len(SAMPLE_QUESTIONS), 3):
-            with gr.Row():
-                for q in SAMPLE_QUESTIONS[row_start:row_start + 3]:
-                    b = gr.Button(q, size="sm", variant="secondary")
-                    sq_btns.append((b, q))
-
-        gr.HTML("<div id='hcai-footer' style='text-align:center;color:#9ca3af;font-size:11px;padding:12px'>"
-                "Healthcare AI | LangGraph + FastAPI + Gradio | Not a replacement for clinical judgment</div>")
 
         # ── Python event functions ────────────────────────────────────────────
 

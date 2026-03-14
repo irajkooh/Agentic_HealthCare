@@ -1227,13 +1227,13 @@ def build_ui() -> gr.Blocks:
         .block { padding: 4px !important; }
         footer { display: none !important; }
 
-        /* Fixed small size for header buttons */
+        /* Fixed bigger, equal size for header buttons */
         #hcai-header-row button {
-            min-width: 90px !important;
-            max-width: 90px !important;
-            width: 90px !important;
-            font-size: 0.82rem !important;
-            padding: 4px 8px !important;
+            min-width: 130px !important;
+            max-width: 130px !important;
+            width: 130px !important;
+            font-size: 0.92rem !important;
+            padding: 8px 12px !important;
         }
 
         /* Patients tab — navy */
@@ -1281,10 +1281,10 @@ def build_ui() -> gr.Blocks:
             elem_id="hcai-status-md"
         )
 
-        # ── Buttons row ───────────────────────────────────────────────────────
+        # ── Header row: Workflow + Refresh side by side ───────────────────────
         with gr.Row(elem_id="hcai-header-row"):
-            refresh_btn         = gr.Button("🔄 Refresh",      size="sm", scale=0)
-            workflow_toggle_btn = gr.Button("🧩 Show Workflow", size="sm", variant="secondary", scale=0)
+            workflow_toggle_btn = gr.Button("🧩 Show Workflow", size="sm", variant="secondary", scale=1)
+            refresh_btn         = gr.Button("🔄 Refresh",      size="sm", scale=1)
 
         refresh_btn.click(fn=get_system_status, outputs=status_md)
 

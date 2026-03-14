@@ -548,7 +548,7 @@ def _render_text(text: str) -> str:
 
 def make_report_html(text: str, full: bool = False) -> str:
     """Wrap _render_text in a scrollable report container."""
-    height = '300px' if full else '260px'
+    height = '260px' if full else '220px'
     wrap = (
         f'width:100%;height:{height};overflow-y:auto;overflow-x:hidden;'
         'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;'
@@ -1214,11 +1214,28 @@ def build_ui() -> gr.Blocks:
 
 
     tab_css = """
-        /* Patients tab — teal/navy */
+        /* ── Fit entire app to viewport, no page scroll ── */
+        html, body { height: 100%; overflow: hidden; margin: 0; padding: 0; }
+        .gradio-container {
+            height: 100vh !important;
+            max-height: 100vh !important;
+            overflow: hidden !important;
+            padding: 4px 8px !important;
+        }
+        /* Tab content scrolls internally */
+        .tabitem { overflow-y: auto !important; max-height: calc(100vh - 110px) !important; }
+
+        /* Compact Gradio default spacing */
+        .gap { gap: 4px !important; }
+        .form { gap: 4px !important; }
+        .block { padding: 4px !important; }
+        footer { display: none !important; }
+
+        /* Patients tab — navy */
         button[id$="-0"] { background: #1e3a5f !important; color: white !important;
                            border-radius: 8px 8px 0 0 !important; font-weight: 600 !important; }
         button[id$="-0"]:not(.selected) { background: #e8edf5 !important; color: #1e3a5f !important; }
-        /* Chat tab — teal green */
+        /* Chat tab — green */
         button[id$="-1"] { background: #059669 !important; color: white !important;
                            border-radius: 8px 8px 0 0 !important; font-weight: 600 !important; }
         button[id$="-1"]:not(.selected) { background: #d1fae5 !important; color: #065f46 !important; }
@@ -1357,7 +1374,7 @@ def build_ui() -> gr.Blocks:
                 gr.Markdown("<small style='color:#6b7280'>Load & Analyse a patient first for full clinical answers.</small>")
 
                 try:
-                    chatbot = gr.Chatbot(label="Clinical Chat", height=280, elem_id="hcai-chatbot")
+                    chatbot = gr.Chatbot(label="Clinical Chat", height=260, elem_id="hcai-chatbot")
                 except TypeError:
                     chatbot = gr.Chatbot(label="Clinical Chat", height=360, elem_id="hcai-chatbot")
 

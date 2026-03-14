@@ -748,7 +748,7 @@ def chat_respond(message, history, patient_state, all_patients):
     # 2. Compact old turns into a summary when history grows large,
     #    to avoid exceeding the model context window.
     _REDIRECT = "Please select a patient and click Load & Analyse first."
-    _MAX_RECENT = 8   # keep last 8 turns (4 exchanges) verbatim
+    _MAX_RECENT = 4   # keep last 4 turns (2 exchanges) verbatim
 
     clean_history = []
     for msg in history:
@@ -763,7 +763,7 @@ def chat_respond(message, history, patient_state, all_patients):
             continue
         clean_history.append({"role": msg["role"], "content": txt})
 
-    # Summarize context after every 4 answers (8 turns)
+    # Summarize context after every 2 answers (4 turns)
     if len(clean_history) > _MAX_RECENT:
         older   = clean_history[:-_MAX_RECENT]
         recent  = clean_history[-_MAX_RECENT:]

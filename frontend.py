@@ -1261,7 +1261,8 @@ def build_ui() -> gr.Blocks:
             color: #1e3a5f !important;
         }
     """
-    with gr.Blocks(title="Healthcare AI", css=tab_css) as demo:
+    with gr.Blocks(title="Healthcare AI") as demo:
+        gr.HTML(f"<style>{tab_css}</style>")
 
         gr.HTML(TITLE_HTML)
 

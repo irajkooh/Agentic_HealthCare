@@ -435,10 +435,10 @@ _db_lock = Lock()
 
 
 TITLE_HTML = """
-<div style="text-align:center;padding:8px 0 4px 0;">
-  <h1 style="font-size:1.4rem;font-weight:700;color:#1e3a5f;margin:0;">🏥 Healthcare AI Clinical Decision Support</h1>
-  <p style="color:#6b7280;margin-top:2px;font-size:0.78rem;">Multi-Agent: Triage → Diagnosis → Treatment | LangGraph + Ollama / HF Inference API</p>
-  <p style="color:#ef4444;font-size:0.72rem;margin-top:1px;">⚠ For clinical decision support only. Not a replacement for clinical judgment.</p>
+<div style="text-align:center;padding:20px 0 6px 0;">
+  <h1 style="font-size:1.9rem;font-weight:700;color:#1e3a5f;margin:0;">🏥 Healthcare AI Clinical Decision Support</h1>
+  <p style="color:#6b7280;margin-top:6px;font-size:0.9rem;">Multi-Agent: Triage → Diagnosis → Treatment | LangGraph + Ollama / HF Inference API</p>
+  <p style="color:#ef4444;font-size:0.78rem;margin-top:4px;">⚠ For clinical decision support only. Not a replacement for clinical judgment.</p>
 </div>
 """
 
@@ -548,7 +548,7 @@ def _render_text(text: str) -> str:
 
 def make_report_html(text: str, full: bool = False) -> str:
     """Wrap _render_text in a scrollable report container."""
-    height = '260px' if full else '220px'
+    height = '620px' if full else '500px'
     wrap = (
         f'width:100%;height:{height};overflow-y:auto;overflow-x:hidden;'
         'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;'
@@ -1214,28 +1214,11 @@ def build_ui() -> gr.Blocks:
 
 
     tab_css = """
-        /* ── Fit entire app to viewport, no page scroll ── */
-        html, body { height: 100%; overflow: hidden; margin: 0; padding: 0; }
-        .gradio-container {
-            height: 100vh !important;
-            max-height: 100vh !important;
-            overflow: hidden !important;
-            padding: 4px 8px !important;
-        }
-        /* Tab content scrolls internally */
-        .tabitem { overflow-y: auto !important; max-height: calc(100vh - 110px) !important; }
-
-        /* Compact Gradio default spacing */
-        .gap { gap: 4px !important; }
-        .form { gap: 4px !important; }
-        .block { padding: 4px !important; }
-        footer { display: none !important; }
-
-        /* Patients tab — navy */
+        /* Patients tab — teal/navy */
         button[id$="-0"] { background: #1e3a5f !important; color: white !important;
                            border-radius: 8px 8px 0 0 !important; font-weight: 600 !important; }
         button[id$="-0"]:not(.selected) { background: #e8edf5 !important; color: #1e3a5f !important; }
-        /* Chat tab — green */
+        /* Chat tab — teal green */
         button[id$="-1"] { background: #059669 !important; color: white !important;
                            border-radius: 8px 8px 0 0 !important; font-weight: 600 !important; }
         button[id$="-1"]:not(.selected) { background: #d1fae5 !important; color: #065f46 !important; }
@@ -1271,50 +1254,48 @@ def build_ui() -> gr.Blocks:
                 # Workflow diagram (hidden by default, shown below status bar)
                 workflow_html = gr.HTML("", visible=False, elem_id="hcai-workflow")
 
-                # ── Patient Database + New Patient side by side ───────────
-                with gr.Row(equal_height=False):
-                    # Left: selector + action buttons
-                    with gr.Column(scale=3):
-                        gr.Markdown("#### 🗄️ Patient Database")
-                        patient_selector = gr.Dropdown(
-                            label="Select Patient",
-                            choices=startup_choices,
-                            value=startup_choices[0] if startup_choices else None,
-                            interactive=True,
-                        )
-                        with gr.Row():
-                            load_btn           = gr.Button("📋 Load & Analyse",   variant="primary", size="sm", scale=3)
-                            delete_btn         = gr.Button("🗑️ Delete",            variant="stop",    size="sm", scale=1)
-                            delete_all_btn     = gr.Button("🗑️ Delete All",        variant="stop",    size="sm", scale=2)
-                        with gr.Row():
-                            delete_all_confirm_btn = gr.Button("⚠️ Confirm Delete All", variant="stop",      size="sm", scale=2, visible=False)
-                            delete_all_cancel_btn  = gr.Button("✕ Cancel",              variant="secondary", size="sm", scale=1, visible=False)
-                        delete_all_status = gr.Markdown("")
+                # Patient Database — selector + actions directly under status bar
+                gr.Markdown("### 🗄️ Patient Database")
+                patient_selector = gr.Dropdown(
+                    label="Select Patient",
+                    choices=startup_choices,
+                    value=startup_choices[0] if startup_choices else None,
+                    interactive=True,
+                )
+                with gr.Row():
+                    load_btn   = gr.Button("📋 Load & Analyse", variant="primary", size="sm", scale=2)
+                    delete_btn = gr.Button("🗑️ Delete",          variant="stop",    size="sm", scale=1)
+                with gr.Row():
+                    delete_all_btn         = gr.Button("🗑️ Delete All Patients", variant="stop",      size="sm", scale=2)
+                    delete_all_confirm_btn = gr.Button("⚠️ Confirm Delete All",  variant="stop",      size="sm", scale=2, visible=False)
+                    delete_all_cancel_btn  = gr.Button("✕ Cancel",               variant="secondary", size="sm", scale=1, visible=False)
+                delete_all_status = gr.Markdown("")
 
-                    # Right: New Patient form
-                    with gr.Column(scale=2):
-                        with gr.Accordion("➕ New Patient", open=False):
-                            with gr.Row():
-                                np_name   = gr.Textbox(label="Name *", scale=2)
-                                np_age    = gr.Number(label="Age", minimum=0, maximum=150, value=None, scale=1)
-                                np_gender = gr.Dropdown(label="Gender",
-                                                        choices=["Male","Female","Non-binary","Unknown"],
-                                                        value=None, scale=1)
-                            np_symptoms  = gr.Textbox(label="🩺 Symptoms *",     lines=1)
-                            np_vitals    = gr.Textbox(label="📊 Vital Signs",     lines=1)
-                            np_history   = gr.Textbox(label="📋 Medical History", lines=1)
-                            with gr.Row():
-                                np_meds      = gr.Textbox(label="💊 Medications", lines=1, scale=1)
-                                np_allergies = gr.Textbox(label="⚠️ Allergies",   lines=1, scale=1)
-                            np_save_btn = gr.Button("💾 Save Patient", variant="primary")
-                            np_status   = gr.Markdown("")
+                with gr.Accordion("➕ New Patient", open=False):
+                    with gr.Row():
+                        np_name   = gr.Textbox(label="Name *", scale=2)
+                        np_age    = gr.Number(label="Age", minimum=0, maximum=150, value=None, scale=1)
+                        np_gender = gr.Dropdown(label="Gender",
+                                                choices=["Male","Female","Non-binary","Unknown"],
+                                                value=None, scale=1)
+                    np_symptoms  = gr.Textbox(label="🩺 Symptoms *",       lines=3)
+                    np_vitals    = gr.Textbox(label="📊 Vital Signs",       lines=1)
+                    np_history   = gr.Textbox(label="📋 Medical History",   lines=2)
+                    with gr.Row():
+                        np_meds      = gr.Textbox(label="💊 Medications", lines=2, scale=1)
+                        np_allergies = gr.Textbox(label="⚠️ Allergies",   lines=2, scale=1)
+                    np_save_btn = gr.Button("💾 Save Patient", variant="primary")
+                    np_status   = gr.Markdown("")
 
-                # ── Patient info + Reports side by side ───────────────────────
+                gr.Markdown("---")
+
+                # Patient info + Reports side by side
                 with gr.Row(equal_height=False):
 
-                    # LEFT: Patient details (compact)
+                    # ── LEFT: Patient details ─────────────────────────────────
                     with gr.Column(scale=1):
-                        gr.Markdown("#### 👤 Patient Information")
+                        gr.Markdown("### 👤 Patient Information")
+
                         created_at_box = gr.Textbox(
                             label="🗓️ Date Registered",
                             value="Select a patient and click Load & Analyse",
@@ -1326,17 +1307,17 @@ def build_ui() -> gr.Blocks:
                             gender_in = gr.Dropdown(label="Gender",
                                                     choices=["Male","Female","Non-binary","Unknown"],
                                                     value=None, scale=1)
-                        symptoms_in = gr.Textbox(label="🩺 Symptoms",        placeholder="Chief complaint...", lines=1)
-                        vitals_in   = gr.Textbox(label="📊 Vital Signs",     placeholder="BP 120/80, HR 72...", lines=1)
-                        history_in  = gr.Textbox(label="📋 Medical History", placeholder="Past diagnoses...", lines=1)
+                        symptoms_in = gr.Textbox(label="🩺 Symptoms",        placeholder="Chief complaint...", lines=4)
+                        vitals_in   = gr.Textbox(label="📊 Vital Signs",     placeholder="BP 120/80, HR 72...", lines=2)
+                        history_in  = gr.Textbox(label="📋 Medical History", placeholder="Past diagnoses...", lines=2)
                         with gr.Row():
-                            meds_in      = gr.Textbox(label="💊 Medications", placeholder="Drug, dose...", lines=1, scale=1)
-                            allergies_in = gr.Textbox(label="⚠️ Allergies",   placeholder="Allergies",     lines=1, scale=1)
+                            meds_in      = gr.Textbox(label="💊 Medications", placeholder="Drug, dose...", lines=2, scale=1)
+                            allergies_in = gr.Textbox(label="⚠️ Allergies",   placeholder="Allergies",     lines=2, scale=1)
                         pipeline_status = gr.Markdown("*Select a patient and click Load & Analyse.*")
 
-                    # RIGHT: Clinical Reports (compact)
+                    # ── RIGHT: Clinical Reports ───────────────────────────────
                     with gr.Column(scale=2):
-                        gr.Markdown("#### 📄 Clinical Reports")
+                        gr.Markdown("### 📄 Clinical Reports")
 
                         with gr.Tab("🚨 Triage"):
                             with gr.Row():
@@ -1374,9 +1355,9 @@ def build_ui() -> gr.Blocks:
                 gr.Markdown("<small style='color:#6b7280'>Load & Analyse a patient first for full clinical answers.</small>")
 
                 try:
-                    chatbot = gr.Chatbot(label="Clinical Chat", height=260, elem_id="hcai-chatbot")
+                    chatbot = gr.Chatbot(label="Clinical Chat", height=460, elem_id="hcai-chatbot")
                 except TypeError:
-                    chatbot = gr.Chatbot(label="Clinical Chat", height=360, elem_id="hcai-chatbot")
+                    chatbot = gr.Chatbot(label="Clinical Chat", height=460, elem_id="hcai-chatbot")
 
                 # Chat toolbar directly under chatbot
                 with gr.Row():

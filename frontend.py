@@ -548,6 +548,12 @@ def _render_text(text: str) -> str:
 
 
 def make_report_html(text: str, full: bool = False) -> str:
+    def make_report_markdown(text: str) -> str:
+        """
+        Generate and normalize clinical report as Markdown for easy copy/paste.
+        Uses the same normalization as chat answers.
+        """
+        return clean_for_chat(text)
     """Wrap _render_text in a scrollable report container."""
     height = '900px' if full else '700px'
     wrap = (
@@ -560,6 +566,8 @@ def make_report_html(text: str, full: bool = False) -> str:
     if not text or not text.strip():
         return (f'<div style="{wrap}"><span style="color:#9ca3af;font-style:italic;">'
                 'Output will appear here after analysis.</span></div>')
+    # Apply the same normalization as chat answers
+    text = clean_for_chat(text)
     return f'<div style="{wrap}">{_render_text(text)}</div>'
 
 
@@ -1218,6 +1226,15 @@ def build_ui() -> gr.Blocks:
         .form { gap: 4px !important; }
         .block { padding: 4px !important; }
         footer { display: none !important; }
+
+        /* Fixed small size for header buttons */
+        #hcai-header-row button {
+            min-width: 90px !important;
+            max-width: 90px !important;
+            width: 90px !important;
+            font-size: 0.82rem !important;
+            padding: 4px 8px !important;
+        }
 
         /* Patients tab — navy */
         button[id$="-0"] { background: #1e3a5f !important; color: white !important;

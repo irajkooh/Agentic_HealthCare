@@ -1226,15 +1226,6 @@ def build_ui() -> gr.Blocks:
         button[id$="-1"] { background: #059669 !important; color: white !important;
                            border-radius: 8px 8px 0 0 !important; font-weight: 600 !important; }
         button[id$="-1"]:not(.selected) { background: #d1fae5 !important; color: #065f46 !important; }
-        /* Pipeline status line */
-        #hcai-pipeline-status { margin: 0 !important; padding: 0 !important; }
-        #hcai-pipeline-status p {
-            font-size: 0.82rem !important;
-            color: #1e3a5f !important;
-            font-weight: 600 !important;
-            margin: 0 !important;
-            padding: 0 !important;
-        }
         /* Status md — no gap */
         #hcai-status-md { margin: 0 !important; padding: 0 !important; }
         /* Sample question buttons — shrink to fit text, white background */
@@ -1272,12 +1263,8 @@ def build_ui() -> gr.Blocks:
             elem_id="hcai-status-md"
         )
 
-        # ── Pipeline status + buttons row ─────────────────────────────────────
+        # ── Buttons row ───────────────────────────────────────────────────────
         with gr.Row(elem_id="hcai-header-row"):
-            pipeline_status     = gr.Markdown(
-                "Multi-Agent: Triage → Diagnosis → Treatment | LangGraph + Ollama / HF Inference API",
-                elem_id="hcai-pipeline-status",
-            )
             refresh_btn         = gr.Button("🔄 Refresh",      size="sm", scale=0)
             workflow_toggle_btn = gr.Button("🧩 Show Workflow", size="sm", variant="secondary", scale=0)
 
@@ -1482,7 +1469,6 @@ def build_ui() -> gr.Blocks:
             EMPTY = [
                 "", None, None, "", "", "", "", "",
                 "",
-                "⚠️ No patient selected.",
                 make_report_html(""), make_report_html(""),
                 make_report_html(""), make_report_html("", full=True),
                 {}, [],
@@ -1495,7 +1481,7 @@ def build_ui() -> gr.Blocks:
                 if not row:
                     return EMPTY
             except Exception as e:
-                EMPTY[9] = f"❌ {e}"
+                # error handled — no pipeline_status to update
                 return EMPTY
 
             name      = row.get("name", "")
@@ -1513,7 +1499,7 @@ def build_ui() -> gr.Blocks:
 
             return (
                 name, age, gender, symptoms, vitals, history, meds, allergies,
-                created, status,
+                created,
                 triage, diagnosis, treatment, full,
                 state, [],
             )
@@ -1583,7 +1569,7 @@ def build_ui() -> gr.Blocks:
             inputs=[patient_selector, all_patients],
             outputs=[name_in, age_in, gender_in, symptoms_in,
                      vitals_in, history_in, meds_in, allergies_in,
-                     created_at_box, pipeline_status,
+                     created_at_box,
                      triage_out, diagnosis_out, treatment_out, final_out,
                      patient_state, chatbot],
             show_progress="full",

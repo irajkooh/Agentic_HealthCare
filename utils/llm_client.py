@@ -30,7 +30,7 @@ OLLAMA_MODEL    = "llama3.2"
 # Set GROQ_API_KEY as a Space secret.
 #
 # Fallback chain: Groq → HF Inference API (if GROQ_API_KEY not set)
-HF_MODEL   = os.environ.get("HF_MODEL", "mistralai/Mistral-7B-Instruct-v0.3")
+HF_MODEL   = os.environ.get("HF_MODEL", "meta-llama/Meta-Llama-3-8B-Instruct")
 HF_TOKEN   = os.environ.get("HF_TOKEN", "")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 # llama3-8b-8192 is free on Groq, fast, and good for clinical tasks

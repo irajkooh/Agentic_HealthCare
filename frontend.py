@@ -1412,9 +1412,9 @@ def build_ui() -> gr.Blocks:
                     # ── LEFT: chat window ─────────────────────────────────────
                     with gr.Column(scale=4):
                         try:
-                            chatbot = gr.Chatbot(label="Clinical Chat", height=260, elem_id="hcai-chatbot")
+                            chatbot = gr.Chatbot(label="Clinical Chat", height=450, elem_id="hcai-chatbot")
                         except TypeError:
-                            chatbot = gr.Chatbot(label="Clinical Chat", height=260, elem_id="hcai-chatbot")
+                            chatbot = gr.Chatbot(label="Clinical Chat", height=450, elem_id="hcai-chatbot")
 
                         # Toolbar under chatbot
                         with gr.Row():

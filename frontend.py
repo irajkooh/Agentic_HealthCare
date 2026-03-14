@@ -435,10 +435,8 @@ _db_lock = Lock()
 
 
 TITLE_HTML = """
-<div style="text-align:center;padding:8px 0 4px 0;">
-  <h1 style="font-size:1.4rem;font-weight:700;color:#1e3a5f;margin:0;">🏥 Healthcare AI Clinical Decision Support</h1>
-  <p style="color:#6b7280;margin-top:2px;font-size:0.78rem;">Multi-Agent: Triage → Diagnosis → Treatment | LangGraph + Ollama / HF Inference API</p>
-  <p style="color:#ef4444;font-size:0.72rem;margin-top:1px;">⚠ For clinical decision support only. Not a replacement for clinical judgment.</p>
+<div style="text-align:center;padding:4px 0 0 0;">
+  <h1 style="font-size:1.35rem;font-weight:700;color:#1e3a5f;margin:0;">🏥 Healthcare AI Clinical Decision Support</h1>
 </div>
 """
 
@@ -598,24 +596,23 @@ def clean_for_chat(text: str) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def get_system_status() -> str:
+    import os as _os
+    env = "🌐 HF Space" if _os.environ.get("SYSTEM") == "spaces" or _os.environ.get("SPACE_ID") else "💻 Local"
     try:
         resp = requests.get(f"{BACKEND_URL}/health", timeout=4)
         if resp.status_code != 200:
-            return "🟡 Backend: Responding but unhealthy"
-        h = resp.json()
+            return f'<div style="text-align:center;font-size:0.78rem;margin:0;padding:0 0 3px 0;">{env} | 🟡 Backend unhealthy</div>'
+        h      = resp.json()
         device = h.get("device_info", {}).get("device", "?").upper()
         llm    = h.get("llm_backend") or h.get("ollama", {})
-        backend = llm.get("backend", "?")
-        model   = llm.get("model", "")
-        # Show backend name + model name for clarity
-        llm_str = f"{backend} ({model})" if model else backend
-        if h.get("status") == "healthy":
-            return f"🟢 Backend: Online | Device: {device} | LLM: {llm_str}"
-        return "🟡 Backend: Degraded"
+        model  = llm.get("model", "")
+        llm_str = f"{llm.get('backend','?')} ({model})" if model else llm.get("backend", "?")
+        status = "🟢" if h.get("status") == "healthy" else "🟡"
+        return f'<div style="text-align:center;font-size:0.78rem;margin:0;padding:0 0 3px 0;">{env} | {status} Device: {device} | LLM: <span style="color:#1d4ed8;font-weight:600;">{llm_str}</span></div>'
     except requests.exceptions.ConnectionError:
-        return "🔴 Backend: Offline — make sure app.py is running"
+        return f'<div style="text-align:center;font-size:0.78rem;margin:0;padding:0 0 3px 0;">{env} | 🔴 Backend offline — run app.py</div>'
     except Exception as e:
-        return f"🟡 Backend: Error ({e})"
+        return f'<div style="text-align:center;font-size:0.78rem;margin:0;padding:0 0 3px 0;">{env} | 🟡 Error ({e})</div>'
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Chat
@@ -916,7 +913,7 @@ SAMPLE_QUESTIONS = [
     "How can you help me?",
     "Tell me about this patient.",
     "What doctor this patient should see?",
-    "Give me the address of doctors the patient can refer in Chicago.",
+    "Address of doctors the patient can refer in Chicago.",
     "Tell me about the patient's triage report.",
     "Tell me about the patient's diagnosis report.",
     "Tell me about the patient's treatment report.",
@@ -1214,18 +1211,8 @@ def build_ui() -> gr.Blocks:
 
 
     tab_css = """
-        /* ── Fit entire app to viewport, no page scroll ── */
-        html, body { height: 100%; overflow: hidden; margin: 0; padding: 0; }
-        .gradio-container {
-            height: 100vh !important;
-            max-height: 100vh !important;
-            overflow: hidden !important;
-            padding: 4px 8px !important;
-        }
-        /* Tab content scrolls internally */
-        .tabitem { overflow-y: auto !important; max-height: calc(100vh - 110px) !important; }
-
-        /* Compact Gradio default spacing */
+        /* ── Compact layout, natural page scroll ── */
+        .gradio-container { padding: 4px 8px !important; }
         .gap { gap: 4px !important; }
         .form { gap: 4px !important; }
         .block { padding: 4px !important; }
@@ -1239,28 +1226,68 @@ def build_ui() -> gr.Blocks:
         button[id$="-1"] { background: #059669 !important; color: white !important;
                            border-radius: 8px 8px 0 0 !important; font-weight: 600 !important; }
         button[id$="-1"]:not(.selected) { background: #d1fae5 !important; color: #065f46 !important; }
-        /* Sample question buttons — one line each, scroll if overflow */
+        /* Pipeline status line */
+        #hcai-pipeline-status { margin: 0 !important; padding: 0 !important; }
+        #hcai-pipeline-status p {
+            font-size: 0.82rem !important;
+            color: #1e3a5f !important;
+            font-weight: 600 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        /* Status md — no gap */
+        #hcai-status-md { margin: 0 !important; padding: 0 !important; }
+        /* Sample question buttons — shrink to fit text, white background */
+        .sq-btn { width: fit-content !important; max-width: 100% !important; }
         .sq-btn button {
-            width: 100% !important;
+            width: fit-content !important;
+            max-width: 100% !important;
             text-align: left !important;
             white-space: nowrap !important;
             overflow: hidden !important;
             text-overflow: ellipsis !important;
-            display: block !important;
+            display: inline-block !important;
             margin-bottom: 3px !important;
             font-size: 0.78rem !important;
+            padding: 4px 10px !important;
+            background: white !important;
+            border: 1px solid #d1d5db !important;
+            color: #374151 !important;
+            box-shadow: none !important;
+        }
+        .sq-btn button:hover {
+            background: #f3f4f6 !important;
+            border-color: #1e3a5f !important;
+            color: #1e3a5f !important;
         }
     """
     with gr.Blocks(title="Healthcare AI", css=tab_css) as demo:
 
         gr.HTML(TITLE_HTML)
 
+        # ── Env/device/LLM line — centered under title ────────────────────────
+        status_md = gr.HTML(
+            f'<div style="text-align:center;font-size:0.78rem;margin:0;padding:0 0 3px 0;">{get_system_status()}</div>',
+            elem_id="hcai-status-md"
+        )
+
+        # ── Pipeline status + buttons row ─────────────────────────────────────
+        with gr.Row(elem_id="hcai-header-row"):
+            pipeline_status     = gr.Markdown(
+                "Multi-Agent: Triage → Diagnosis → Treatment | LangGraph + Ollama / HF Inference API",
+                elem_id="hcai-pipeline-status",
+            )
+            refresh_btn         = gr.Button("🔄 Refresh",      size="sm", scale=0)
+            workflow_toggle_btn = gr.Button("🧩 Show Workflow", size="sm", variant="secondary", scale=0)
+
+        refresh_btn.click(fn=get_system_status, outputs=status_md)
 
         # ── Shared state ──────────────────────────────────────────────────────
         patient_state      = gr.State(value={})
         all_patients       = gr.State(value=startup_rows)
         delete_all_confirm = gr.State(value=False)
         workflow_visible   = gr.State(value=False)
+        workflow_html = gr.HTML("", visible=False, elem_id="hcai-workflow")
 
         # ── Two top-level tabs: Patients | Chat ───────────────────────────────
         with gr.Tabs(selected=0) as main_tabs:
@@ -1269,18 +1296,6 @@ def build_ui() -> gr.Blocks:
             # TAB 1 — PATIENTS
             # ════════════════════════════════════════════════════════════════
             with gr.TabItem("🏥 Patients", id=0):
-
-                # Status bar
-                with gr.Row():
-                    with gr.Column(scale=5):
-                        status_md = gr.Markdown(get_system_status())
-                    refresh_btn         = gr.Button("🔄 Refresh",      size="sm", scale=0)
-                    workflow_toggle_btn = gr.Button("🧩 Show Workflow", size="sm", variant="secondary", scale=0)
-
-                refresh_btn.click(fn=get_system_status, outputs=status_md)
-
-                # Workflow diagram (hidden by default, shown below status bar)
-                workflow_html = gr.HTML("", visible=False, elem_id="hcai-workflow")
 
                 # ── Patient Database + New Patient side by side ───────────
                 with gr.Row(equal_height=False):
@@ -1343,7 +1358,6 @@ def build_ui() -> gr.Blocks:
                         with gr.Row():
                             meds_in      = gr.Textbox(label="💊 Medications", placeholder="Drug, dose...", lines=1, scale=1)
                             allergies_in = gr.Textbox(label="⚠️ Allergies",   placeholder="Allergies",     lines=1, scale=1)
-                        pipeline_status = gr.Markdown("")
 
                     # RIGHT: Clinical Reports (compact)
                     with gr.Column(scale=2):
@@ -1381,14 +1395,22 @@ def build_ui() -> gr.Blocks:
             # ════════════════════════════════════════════════════════════════
             with gr.TabItem("💬 Chat", id=1):
 
-                gr.Markdown("### 💬 Clinical Chat")
-                gr.Markdown("<small style='color:#6b7280'>Load & Analyse a patient first for full clinical answers.</small>")
+                # Header row: subtitle left, "Sample Questions" label right
+                with gr.Row():
+                    with gr.Column(scale=3):
+                        gr.Markdown("### 💬 Clinical Chat")
+                        gr.Markdown("<small style='color:#6b7280'>Load & Analyze a patient first for full clinical answers.</small>")
+                    with gr.Column(scale=1):
+                        gr.HTML(
+                            '<div style="font-size:0.95rem;font-weight:700;color:#1e3a5f;'
+                            'padding:22px 0 0 4px;">Sample Questions</div>'
+                        )
 
                 # Chat + Sample Questions side by side
                 with gr.Row(equal_height=False):
 
-                    # ── LEFT: chat window (narrower) ──────────────────────────
-                    with gr.Column(scale=3):
+                    # ── LEFT: chat window ─────────────────────────────────────
+                    with gr.Column(scale=4):
                         try:
                             chatbot = gr.Chatbot(label="Clinical Chat", height=260, elem_id="hcai-chatbot")
                         except TypeError:
@@ -1408,12 +1430,8 @@ def build_ui() -> gr.Blocks:
                             chat_btn  = gr.Button("Send 💬",  variant="primary",   scale=1)
                             clear_btn = gr.Button("Clear 🗑️", variant="secondary", scale=1)
 
-                    # ── RIGHT: sample questions (each on one line, scrollable) ─
-                    with gr.Column(scale=2, min_width=220):
-                        gr.HTML(
-                            '<div style="font-size:0.9rem;font-weight:700;color:#1e3a5f;'
-                            'padding:4px 0 8px 0;">Sample Questions</div>'
-                        )
+                    # ── RIGHT: sample questions, width = longest question ──────
+                    with gr.Column(scale=1):
                         sq_btns = []
                         for q in SAMPLE_QUESTIONS:
                             b = gr.Button(
@@ -1573,19 +1591,17 @@ def build_ui() -> gr.Blocks:
         load_btn.click(
             fn=None,
             js="""() => {
+                // Switch to Chat tab immediately on click (before analysis completes)
+                var tabs = document.querySelectorAll('.tab-nav button');
+                if (tabs.length > 1) tabs[1].click();
+                // Focus chat input after tab switch
                 setTimeout(function() {
-                    // Switch to Chat tab (tab index 1)
-                    var tabs = document.querySelectorAll('.tab-nav button');
-                    if (tabs.length > 1) tabs[1].click();
-                    // Focus the chat input
-                    setTimeout(function() {
-                        var inp = document.getElementById('hcai-chat-input');
-                        if (inp) {
-                            var ta = inp.querySelector('textarea') || inp.querySelector('input');
-                            if (ta) { ta.focus(); ta.scrollIntoView({block:'center'}); }
-                        }
-                    }, 400);
-                }, 200);
+                    var inp = document.getElementById('hcai-chat-input');
+                    if (inp) {
+                        var ta = inp.querySelector('textarea') || inp.querySelector('input');
+                        if (ta) { ta.focus(); }
+                    }
+                }, 300);
                 return [];
             }"""
         )

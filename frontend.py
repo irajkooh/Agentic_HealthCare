@@ -1227,13 +1227,14 @@ def build_ui() -> gr.Blocks:
         .block { padding: 4px !important; }
         footer { display: none !important; }
 
-        /* Fixed bigger, equal size for header buttons */
+        /* Fixed header button size: small height, wide enough for label */
         #hcai-header-row button {
-            min-width: 130px !important;
-            max-width: 130px !important;
-            width: 130px !important;
+            min-width: 140px !important;
+            max-width: 180px !important;
+            width: 160px !important;
             font-size: 0.92rem !important;
-            padding: 8px 12px !important;
+            padding: 4px 10px !important;
+            height: 32px !important;
         }
 
         /* Patients tab — navy */

@@ -344,13 +344,15 @@ def init_db():
             name TEXT NOT NULL, age INTEGER, gender TEXT,
             symptoms TEXT, vitals TEXT, history TEXT,
             medications TEXT, allergies TEXT,
-            created_at TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now','localtime'))
+            created_at  TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now','localtime')),
+            last_edited TEXT DEFAULT NULL
         )
     """)
-    try:
-        con.execute("ALTER TABLE patients ADD COLUMN created_at TEXT")
-    except Exception:
-        pass
+    for col in ("created_at TEXT", "last_edited TEXT"):
+        try:
+            con.execute(f"ALTER TABLE patients ADD COLUMN {col}")
+        except Exception:
+            pass
     con.commit()
 
     count = con.execute("SELECT COUNT(*) FROM patients").fetchone()[0]
@@ -371,8 +373,8 @@ def init_db():
             ts = (base - timedelta(days=days_ago)).strftime("%Y-%m-%d %H:%M:%S")
             con.execute(
                 "INSERT INTO patients "
-                "(name,age,gender,symptoms,vitals,history,medications,allergies,created_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?)",
+                "(name,age,gender,symptoms,vitals,history,medications,allergies,created_at,last_edited)"
+                " VALUES (?,?,?,?,?,?,?,?,?,NULL)",
                 (name, age, gender, symptoms, vitals, history, meds, allergies, ts)
             )
         con.commit()
@@ -391,13 +393,25 @@ def db_load_all():
 def db_add_patient(name, age, gender, symptoms, vitals, history, medications, allergies):
     con = sqlite3.connect(DB_PATH)
     con.execute(
-        "INSERT INTO patients (name,age,gender,symptoms,vitals,history,medications,allergies,created_at)"
-        " VALUES (?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO patients (name,age,gender,symptoms,vitals,history,medications,allergies,created_at,last_edited)"
+        " VALUES (?,?,?,?,?,?,?,?,?,NULL)",
         (name, int(age) if age else 0, gender, symptoms, vitals, history, medications, allergies,
          datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     )
     con.commit()
     _db_reindex(con)
+    con.close()
+
+def db_update_patient(pid, name, age, gender, symptoms, vitals, history, medications, allergies):
+    """Update an existing patient record and stamp last_edited."""
+    con = sqlite3.connect(DB_PATH)
+    con.execute(
+        "UPDATE patients SET name=?,age=?,gender=?,symptoms=?,vitals=?,history=?,"
+        "medications=?,allergies=?,last_edited=? WHERE id=?",
+        (name, int(age) if age else 0, gender, symptoms, vitals, history, medications, allergies,
+         datetime.now().strftime("%Y-%m-%d %H:%M:%S"), pid)
+    )
+    con.commit()
     con.close()
 
 def _db_reindex(con):
@@ -1304,10 +1318,11 @@ def build_ui() -> gr.Blocks:
             # ════════════════════════════════════════════════════════════════
             with gr.TabItem("🏥 Patients", id=0):
 
-                # ── Patient Database + New Patient side by side ───────────
+                # ── Top row: DB selector + Reports (same level) ──────────
                 with gr.Row(equal_height=False):
-                    # Left: selector + action buttons
-                    with gr.Column(scale=3):
+
+                    # LEFT: narrow DB column
+                    with gr.Column(scale=1, min_width=260):
                         gr.Markdown("#### 🗄️ Patient Database")
                         patient_selector = gr.Dropdown(
                             label="Select Patient",
@@ -1315,59 +1330,50 @@ def build_ui() -> gr.Blocks:
                             value=startup_choices[0] if startup_choices else None,
                             interactive=True,
                         )
+                        # Action buttons row
                         with gr.Row():
-                            load_btn           = gr.Button("📋 Load & Analyse",   variant="primary", size="sm", scale=3)
-                            delete_btn         = gr.Button("🗑️ Delete",            variant="stop",    size="sm", scale=1)
-                            delete_all_btn     = gr.Button("🗑️ Delete All",        variant="stop",    size="sm", scale=2)
+                            load_btn   = gr.Button("📋 Load",   variant="primary",   size="sm", scale=3)
+                            edit_btn   = gr.Button("✏️ Edit",    variant="secondary", size="sm", scale=2)
+                            add_btn    = gr.Button("➕ Add",     variant="secondary", size="sm", scale=2)
+                        with gr.Row():
+                            delete_btn     = gr.Button("🗑️ Delete",     variant="stop", size="sm", scale=2)
+                            delete_all_btn = gr.Button("🗑️ Delete All", variant="stop", size="sm", scale=3)
                         with gr.Row():
                             delete_all_confirm_btn = gr.Button("⚠️ Confirm Delete All", variant="stop",      size="sm", scale=2, visible=False)
                             delete_all_cancel_btn  = gr.Button("✕ Cancel",              variant="secondary", size="sm", scale=1, visible=False)
                         delete_all_status = gr.Markdown("")
 
-                    # Right: New Patient form
-                    with gr.Column(scale=2):
-                        with gr.Accordion("➕ New Patient", open=False):
-                            with gr.Row():
-                                np_name   = gr.Textbox(label="Name *", scale=2)
-                                np_age    = gr.Number(label="Age", minimum=0, maximum=150, value=None, scale=1)
-                                np_gender = gr.Dropdown(label="Gender",
-                                                        choices=["Male","Female","Non-binary","Unknown"],
-                                                        value=None, scale=1)
-                            np_symptoms  = gr.Textbox(label="🩺 Symptoms *",     lines=1)
-                            np_vitals    = gr.Textbox(label="📊 Vital Signs",     lines=1)
-                            np_history   = gr.Textbox(label="📋 Medical History", lines=1)
-                            with gr.Row():
-                                np_meds      = gr.Textbox(label="💊 Medications", lines=1, scale=1)
-                                np_allergies = gr.Textbox(label="⚠️ Allergies",   lines=1, scale=1)
-                            np_save_btn = gr.Button("💾 Save Patient", variant="primary")
-                            np_status   = gr.Markdown("")
-
-                # ── Patient info + Reports side by side ───────────────────────
-                with gr.Row(equal_height=False):
-
-                    # LEFT: Patient details (compact)
-                    with gr.Column(scale=1):
+                        # Patient Information (view / edit / add — same panel)
                         gr.Markdown("#### 👤 Patient Information")
-                        created_at_box = gr.Textbox(
-                            label="🗓️ Date Registered",
-                            value="",
-                            interactive=False, lines=1,
-                        )
+                        patient_mode = gr.State(value="view")  # "view" | "edit" | "add"
+                        edit_pid     = gr.State(value=None)    # id of patient being edited
+
                         with gr.Row():
-                            name_in   = gr.Textbox(label="Name",   placeholder="Patient name", scale=2)
-                            age_in    = gr.Number( label="Age",    minimum=0, maximum=150, value=None, scale=1)
+                            created_at_box   = gr.Textbox(label="🗓️ Registered", interactive=False, lines=1, scale=1)
+                            last_edited_box  = gr.Textbox(label="✏️ Last Edited", interactive=False, lines=1, scale=1)
+
+                        with gr.Row():
+                            name_in   = gr.Textbox(label="Name",   placeholder="Patient name", scale=2, interactive=False)
+                            age_in    = gr.Number( label="Age",    minimum=0, maximum=150, value=None, scale=1, interactive=False)
                             gender_in = gr.Dropdown(label="Gender",
                                                     choices=["Male","Female","Non-binary","Unknown"],
-                                                    value=None, scale=1)
-                        symptoms_in = gr.Textbox(label="🩺 Symptoms",        placeholder="Chief complaint...", lines=1)
-                        vitals_in   = gr.Textbox(label="📊 Vital Signs",     placeholder="BP 120/80, HR 72...", lines=1)
-                        history_in  = gr.Textbox(label="📋 Medical History", placeholder="Past diagnoses...", lines=1)
+                                                    value=None, scale=1, interactive=False)
+                        symptoms_in = gr.Textbox(label="🩺 Symptoms",        placeholder="Chief complaint...", lines=1, interactive=False)
+                        vitals_in   = gr.Textbox(label="📊 Vital Signs",     placeholder="BP 120/80, HR 72...", lines=1, interactive=False)
+                        history_in  = gr.Textbox(label="📋 Medical History", placeholder="Past diagnoses...", lines=1, interactive=False)
                         with gr.Row():
-                            meds_in      = gr.Textbox(label="💊 Medications", placeholder="Drug, dose...", lines=1, scale=1)
-                            allergies_in = gr.Textbox(label="⚠️ Allergies",   placeholder="Allergies",     lines=1, scale=1)
+                            meds_in      = gr.Textbox(label="💊 Medications", placeholder="Drug, dose...", lines=1, scale=1, interactive=False)
+                            allergies_in = gr.Textbox(label="⚠️ Allergies",   placeholder="Allergies",     lines=1, scale=1, interactive=False)
 
-                    # RIGHT: Clinical Reports (compact)
-                    with gr.Column(scale=2):
+                        # Save / Add Patient / Cancel — hidden in view mode
+                        with gr.Row():
+                            save_edit_btn    = gr.Button("💾 Save Changes",  variant="primary",   size="sm", visible=False)
+                            save_add_btn     = gr.Button("➕ Add Patient",    variant="primary",   size="sm", visible=False)
+                            cancel_mode_btn  = gr.Button("✕ Cancel",         variant="secondary", size="sm", visible=False)
+                        form_status = gr.Markdown("")
+
+                    # RIGHT: Clinical Reports (wider, inline with DB label)
+                    with gr.Column(scale=3):
                         gr.Markdown("#### 📄 Clinical Reports")
 
                         with gr.Tab("🚨 Triage"):
@@ -1419,7 +1425,7 @@ def build_ui() -> gr.Blocks:
                     # ── LEFT: chat window ─────────────────────────────────────
                     with gr.Column(scale=4):
                         try:
-                            chatbot = gr.Chatbot(label="Clinical Chat", height=450, elem_id="hcai-chatbot")
+                            chatbot = gr.Chatbot(label="Clinical Chat", height=450, elem_id="hcai-chatbot", type="messages")
                         except TypeError:
                             chatbot = gr.Chatbot(label="Clinical Chat", height=450, elem_id="hcai-chatbot")
 
@@ -1484,45 +1490,176 @@ def build_ui() -> gr.Blocks:
 
         # ── Python event functions ────────────────────────────────────────────
 
+        # Shared helper: read a patient row into the panel fields (read-only)
+        def _row_to_fields(row):
+            return (
+                row.get("name", ""),
+                row.get("age") or None,
+                row.get("gender") or None,
+                row.get("symptoms", ""),
+                row.get("vitals", ""),
+                row.get("history", ""),
+                row.get("medications", ""),
+                row.get("allergies", ""),
+                row.get("created_at") or "",
+                row.get("last_edited") or "",
+            )
+
+        # ── Load & Analyse ─────────────────────────────────────────────────────
         def load_and_analyse(selection, rows):
-            EMPTY = [
-                "", None, None, "", "", "", "", "",
-                "",
-                make_report_html(""), make_report_html(""),
-                make_report_html(""), make_report_html("", full=True),
-                {}, [],
-            ]
+            eh = make_report_html("")
+            def empty():
+                return (
+                    gr.update(value="", interactive=False),
+                    gr.update(value=None, interactive=False),
+                    gr.update(value=None, interactive=False),
+                    gr.update(value="", interactive=False),
+                    gr.update(value="", interactive=False),
+                    gr.update(value="", interactive=False),
+                    gr.update(value="", interactive=False),
+                    gr.update(value="", interactive=False),
+                    "", "",
+                    eh, eh, eh, make_report_html("", full=True),
+                    {}, [],
+                    gr.update(visible=False), gr.update(visible=False), gr.update(visible=False),
+                    "",
+                )
             if not selection:
-                return EMPTY
+                return empty()
+            try:
+                pid = int(str(selection).split(".")[0])
+                row = next((r for r in db_load_all() if r["id"] == pid), None)
+                if not row: return empty()
+            except Exception:
+                return empty()
+
+            name, age, gender, symptoms, vitals, history, meds, allergies, created, last_ed = _row_to_fields(row)
+            _, triage, diagnosis, treatment, full, state = run_analysis(
+                name, age, gender, symptoms, vitals, history, meds, allergies)
+            return (
+                gr.update(value=name,      interactive=False),
+                gr.update(value=age,       interactive=False),
+                gr.update(value=gender,    interactive=False),
+                gr.update(value=symptoms,  interactive=False),
+                gr.update(value=vitals,    interactive=False),
+                gr.update(value=history,   interactive=False),
+                gr.update(value=meds,      interactive=False),
+                gr.update(value=allergies, interactive=False),
+                created, last_ed,
+                triage, diagnosis, treatment, full, state, [],
+                gr.update(visible=False), gr.update(visible=False), gr.update(visible=False),
+                "",
+            )
+
+        # ── Edit mode ──────────────────────────────────────────────────────────
+        def on_edit_click(selection, rows):
+            """Load selected patient into editable fields."""
+            if not selection:
+                return ([gr.update()]*8 + ["",""] +
+                        [gr.update(visible=False)]*3 + ["⚠️ Select a patient first.", None])
             try:
                 pid = int(str(selection).split(".")[0])
                 row = next((r for r in db_load_all() if r["id"] == pid), None)
                 if not row:
-                    return EMPTY
+                    return ([gr.update()]*8 + ["",""] +
+                            [gr.update(visible=False)]*3 + ["❌ Patient not found.", None])
             except Exception as e:
-                # error handled — no pipeline_status to update
-                return EMPTY
-
-            name      = row.get("name", "")
-            age       = row.get("age") or None
-            gender    = row.get("gender") or None
-            symptoms  = row.get("symptoms", "")
-            vitals    = row.get("vitals", "")
-            history   = row.get("history", "")
-            meds      = row.get("medications", "")
-            allergies = row.get("allergies", "")
-            created   = row.get("created_at") or "Unknown"
-
-            status, triage, diagnosis, treatment, full, state = run_analysis(
-                name, age, gender, symptoms, vitals, history, meds, allergies)
-
+                return ([gr.update()]*8 + ["",""] +
+                        [gr.update(visible=False)]*3 + [f"❌ {e}", None])
+            name, age, gender, symptoms, vitals, history, meds, allergies, created, last_ed = _row_to_fields(row)
             return (
-                name, age, gender, symptoms, vitals, history, meds, allergies,
-                created,
-                triage, diagnosis, treatment, full,
-                state, [],
+                gr.update(value=name,      interactive=True),
+                gr.update(value=age,       interactive=True),
+                gr.update(value=gender,    interactive=True),
+                gr.update(value=symptoms,  interactive=True),
+                gr.update(value=vitals,    interactive=True),
+                gr.update(value=history,   interactive=True),
+                gr.update(value=meds,      interactive=True),
+                gr.update(value=allergies, interactive=True),
+                created, last_ed,
+                gr.update(visible=True),  # save_edit_btn
+                gr.update(visible=False), # save_add_btn
+                gr.update(visible=True),  # cancel_mode_btn
+                "", pid,
             )
 
+        # ── Add mode ───────────────────────────────────────────────────────────
+        def on_add_click():
+            """Clear fields and make them editable for a new patient."""
+            return (
+                gr.update(value="",   interactive=True),
+                gr.update(value=None, interactive=True),
+                gr.update(value=None, interactive=True),
+                gr.update(value="",   interactive=True),
+                gr.update(value="",   interactive=True),
+                gr.update(value="",   interactive=True),
+                gr.update(value="",   interactive=True),
+                gr.update(value="",   interactive=True),
+                "", "",
+                gr.update(visible=False), # save_edit_btn
+                gr.update(visible=True),  # save_add_btn
+                gr.update(visible=True),  # cancel_mode_btn
+                "", None,
+            )
+
+        # ── Cancel (return to view mode) ───────────────────────────────────────
+        def on_cancel_mode(selection, rows):
+            """Reload current selection (if any) and return to view mode."""
+            row = None
+            if selection:
+                try:
+                    pid = int(str(selection).split(".")[0])
+                    row = next((r for r in db_load_all() if r["id"] == pid), None)
+                except Exception:
+                    pass
+            if row:
+                name, age, gender, symptoms, vitals, history, meds, allergies, created, last_ed = _row_to_fields(row)
+            else:
+                name, age, gender, symptoms, vitals, history, meds, allergies, created, last_ed = ("", None, None, "", "", "", "", "", "", "")
+            return (
+                gr.update(value=name,      interactive=False),
+                gr.update(value=age,       interactive=False),
+                gr.update(value=gender,    interactive=False),
+                gr.update(value=symptoms,  interactive=False),
+                gr.update(value=vitals,    interactive=False),
+                gr.update(value=history,   interactive=False),
+                gr.update(value=meds,      interactive=False),
+                gr.update(value=allergies, interactive=False),
+                created, last_ed,
+                gr.update(visible=False), gr.update(visible=False), gr.update(visible=False),
+                "", None,
+            )
+
+        # ── Save Edit ──────────────────────────────────────────────────────────
+        def on_save_edit(pid, name, age, gender, symptoms, vitals, history, meds, allergies, rows):
+            if not pid:
+                return "❌ No patient selected for editing.", rows, gr.update(), None
+            if not (name or "").strip():
+                return "⚠️ Name required.", rows, gr.update(), pid
+            with _db_lock:
+                db_update_patient(pid, name, int(age) if age else 0, gender or "Unknown",
+                                  symptoms or "", vitals or "", history or "",
+                                  meds or "", allergies or "")
+            nr   = db_load_all()
+            nc   = [f"{r['id']}. {r['name']} (age {r['age']})" for r in nr]
+            sel  = next((c for c in nc if c.startswith(f"{pid}.")), nc[0] if nc else None)
+            return f"✅ {name} updated.", nr, gr.update(choices=nc, value=sel), None
+
+        # ── Save Add ───────────────────────────────────────────────────────────
+        def on_save_add(name, age, gender, symptoms, vitals, history, meds, allergies, rows):
+            if not (name or "").strip():
+                return "⚠️ Name required.", rows, gr.update()
+            if not (symptoms or "").strip():
+                return "⚠️ Symptoms required.", rows, gr.update()
+            with _db_lock:
+                db_add_patient(name, int(age) if age else 0, gender or "Unknown",
+                               symptoms, vitals or "", history or "",
+                               meds or "", allergies or "")
+            nr = db_load_all()
+            nc = [f"{r['id']}. {r['name']} (age {r['age']})" for r in nr]
+            return f"✅ {name} added.", nr, gr.update(choices=nc, value=nc[-1])
+
+        # ── Delete ─────────────────────────────────────────────────────────────
         def delete_patient(selection, rows):
             if not selection:
                 return rows, gr.update()
@@ -1535,50 +1672,28 @@ def build_ui() -> gr.Blocks:
             except Exception:
                 return rows, gr.update()
 
-        def save_new_patient(name, age, gender, symptoms, vitals, history,
-                             medications, allergies, rows):
-            if not (name or "").strip():
-                return "⚠️ Name required.", rows, gr.update()
-            if not (symptoms or "").strip():
-                return "⚠️ Symptoms required.", rows, gr.update()
-            with _db_lock:
-                db_add_patient(name, int(age) if age else 0, gender or "Unknown",
-                               symptoms, vitals or "", history or "",
-                               medications or "", allergies or "")
-            nr = db_load_all()
-            nc = [f"{r['id']}. {r['name']} (age {r['age']})" for r in nr]
-            return f"✅ {name} saved.", nr, gr.update(choices=nc, value=nc[-1])
-
         # Delete All — two-step confirmation
         def on_delete_all_click():
-            """First click: show confirm/cancel buttons."""
             return (
                 gr.update(value="⚠️ This will permanently delete ALL patients. Click Confirm to proceed."),
-                gr.update(visible=False),   # hide Delete All btn
-                gr.update(visible=True),    # show Confirm btn
-                gr.update(visible=True),    # show Cancel btn
+                gr.update(visible=False),
+                gr.update(visible=True),
+                gr.update(visible=True),
             )
 
         def on_delete_all_confirm(rows):
-            """Confirmed: delete everything, refresh dropdown."""
             with _db_lock:
                 db_delete_all()
             return (
-                [],                                                       # all_patients
-                gr.update(choices=[], value=None),                        # patient_selector
-                gr.update(value="✅ All patients deleted."),              # status
-                gr.update(visible=True),                                  # show Delete All btn
-                gr.update(visible=False),                                 # hide Confirm
-                gr.update(visible=False),                                 # hide Cancel
+                [], gr.update(choices=[], value=None),
+                gr.update(value="✅ All patients deleted."),
+                gr.update(visible=True), gr.update(visible=False), gr.update(visible=False),
             )
 
         def on_delete_all_cancel():
-            """Cancelled: hide confirm/cancel, clear status."""
             return (
-                gr.update(value=""),          # clear status
-                gr.update(visible=True),      # show Delete All btn
-                gr.update(visible=False),     # hide Confirm
-                gr.update(visible=False),     # hide Cancel
+                gr.update(value=""),
+                gr.update(visible=True), gr.update(visible=False), gr.update(visible=False),
             )
 
         # ── Wire Python events ────────────────────────────────────────────────
@@ -1586,21 +1701,22 @@ def build_ui() -> gr.Blocks:
         load_btn.click(
             fn=load_and_analyse,
             inputs=[patient_selector, all_patients],
-            outputs=[name_in, age_in, gender_in, symptoms_in,
-                     vitals_in, history_in, meds_in, allergies_in,
-                     created_at_box,
-                     triage_out, diagnosis_out, treatment_out, final_out,
-                     patient_state, chatbot],
+            outputs=[
+                name_in, age_in, gender_in, symptoms_in,
+                vitals_in, history_in, meds_in, allergies_in,
+                created_at_box, last_edited_box,
+                triage_out, diagnosis_out, treatment_out, final_out,
+                patient_state, chatbot,
+                save_edit_btn, save_add_btn, cancel_mode_btn,
+                form_status,
+            ],
             show_progress="full",
         )
-        # After loading, switch to Chat tab and focus the question input
         load_btn.click(
             fn=None,
             js="""() => {
-                // Switch to Chat tab immediately on click (before analysis completes)
                 var tabs = document.querySelectorAll('.tab-nav button');
                 if (tabs.length > 1) tabs[1].click();
-                // Focus chat input after tab switch
                 setTimeout(function() {
                     var inp = document.getElementById('hcai-chat-input');
                     if (inp) {
@@ -1611,19 +1727,62 @@ def build_ui() -> gr.Blocks:
                 return [];
             }"""
         )
+
+        edit_btn.click(
+            fn=on_edit_click,
+            inputs=[patient_selector, all_patients],
+            outputs=[
+                name_in, age_in, gender_in, symptoms_in,
+                vitals_in, history_in, meds_in, allergies_in,
+                created_at_box, last_edited_box,
+                save_edit_btn, save_add_btn, cancel_mode_btn,
+                form_status, edit_pid,
+            ],
+        )
+
+        add_btn.click(
+            fn=on_add_click,
+            outputs=[
+                name_in, age_in, gender_in, symptoms_in,
+                vitals_in, history_in, meds_in, allergies_in,
+                created_at_box, last_edited_box,
+                save_edit_btn, save_add_btn, cancel_mode_btn,
+                form_status, edit_pid,
+            ],
+        )
+
+        cancel_mode_btn.click(
+            fn=on_cancel_mode,
+            inputs=[patient_selector, all_patients],
+            outputs=[
+                name_in, age_in, gender_in, symptoms_in,
+                vitals_in, history_in, meds_in, allergies_in,
+                created_at_box, last_edited_box,
+                save_edit_btn, save_add_btn, cancel_mode_btn,
+                form_status, edit_pid,
+            ],
+        )
+
+        save_edit_btn.click(
+            fn=on_save_edit,
+            inputs=[edit_pid, name_in, age_in, gender_in, symptoms_in,
+                    vitals_in, history_in, meds_in, allergies_in, all_patients],
+            outputs=[form_status, all_patients, patient_selector, edit_pid],
+        )
+
+        save_add_btn.click(
+            fn=on_save_add,
+            inputs=[name_in, age_in, gender_in, symptoms_in,
+                    vitals_in, history_in, meds_in, allergies_in, all_patients],
+            outputs=[form_status, all_patients, patient_selector],
+        )
+
         delete_btn.click(
             fn=delete_patient,
             inputs=[patient_selector, all_patients],
             outputs=[all_patients, patient_selector],
         )
-        np_save_btn.click(
-            fn=save_new_patient,
-            inputs=[np_name, np_age, np_gender, np_symptoms, np_vitals,
-                    np_history, np_meds, np_allergies, all_patients],
-            outputs=[np_status, all_patients, patient_selector],
-        )
 
-        # Delete All — 2-step
         delete_all_btn.click(
             fn=on_delete_all_click,
             outputs=[delete_all_status, delete_all_btn, delete_all_confirm_btn, delete_all_cancel_btn],

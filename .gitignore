@@ -1,0 +1,21 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Secrets — never deploy
+_secrets/
+utils/.GROQ_API_KEY
+.HF_token.txt
+
+# Database — regenerated on startup
+patients.db
+
+# macOS
+.DS_Store

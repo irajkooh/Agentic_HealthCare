@@ -1116,6 +1116,26 @@ _JS_FIND_CHATBOT = (
     "  var scope = wrap || document.querySelector('.chatbot, [data-testid=\"chatbot\"]');\n"
 )
 
+# Auto-scroll the chatbot to the bottom after a new answer arrives.
+# Tries the inner scrollable div first (Gradio 4/5/6), falls back to the wrapper.
+_JS_AUTOSCROLL = """() => {
+  var wrap = document.getElementById('hcai-chatbot');
+  var el = null;
+  if (wrap) {
+    // Gradio renders a scrollable inner container
+    var candidates = wrap.querySelectorAll('*');
+    for (var i = 0; i < candidates.length; i++) {
+      var s = window.getComputedStyle(candidates[i]);
+      if (s.overflowY === 'auto' || s.overflowY === 'scroll') {
+        el = candidates[i]; break;
+      }
+    }
+    if (!el) el = wrap;
+    el.scrollTop = el.scrollHeight;
+  }
+  return [];
+}"""
+
 
 def _chat_tts_js() -> str:
     return (
@@ -1804,11 +1824,13 @@ def build_ui() -> gr.Blocks:
                 fn=lambda h, ps, ap, q=question: chat_respond(q, h, ps, ap),
                 inputs=[chatbot, patient_state, all_patients],
                 outputs=[chatbot, chat_input],
-            )
+            ).then(fn=None, js=_JS_AUTOSCROLL)
 
         chat_inputs = [chat_input, chatbot, patient_state, all_patients]
-        chat_btn.click(fn=chat_respond, inputs=chat_inputs, outputs=[chatbot, chat_input])
-        chat_input.submit(fn=chat_respond, inputs=chat_inputs, outputs=[chatbot, chat_input])
+        chat_btn.click(fn=chat_respond, inputs=chat_inputs, outputs=[chatbot, chat_input]).then(
+            fn=None, js=_JS_AUTOSCROLL)
+        chat_input.submit(fn=chat_respond, inputs=chat_inputs, outputs=[chatbot, chat_input]).then(
+            fn=None, js=_JS_AUTOSCROLL)
         clear_btn.click(fn=lambda: ([], ""), outputs=[chatbot, chat_input])
 
         # ── Refresh patients from DB on every page load ───────────────────────

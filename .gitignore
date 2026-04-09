@@ -13,6 +13,10 @@ wheels/
 _secrets/
 utils/.GROQ_API_KEY
 .HF_token.txt
+_Instructions.md
+_HowItWorks.md
+_MakeAppAliveOnHFSpace.md
+HowItWorks.md
 
 # Database — regenerated on startup
 patients.db
